@@ -58,4 +58,4 @@ gh (GitHub CLI), uv (Python package manager), pnpm, yarn, bun, browser (Playwrig
 
 - Source: https://github.com/nclandrei/ccw
 - PyPI: https://pypi.org/project/ccweb/
-- Web: https://nclandrei.github.io/ccw
+- Web: https://ccweb.nicolaeandrei.com

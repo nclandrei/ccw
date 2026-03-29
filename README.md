@@ -53,7 +53,7 @@ uvx ccweb init --scripts-dir ci/scripts       # Custom scripts directory
 
 ## Web configurator
 
-Use the interactive configurator at **[nclandrei.github.io/ccw](https://nclandrei.github.io/ccw)** to pick toolchains and copy the command.
+Use the interactive configurator at **[ccweb.nicolaeandrei.com](https://ccweb.nicolaeandrei.com)** to pick toolchains and copy the command.
 
 ## License
 

@@ -157,7 +157,7 @@ EPILOG = textwrap.dedent("""\
       3. Start a Claude Code web session — session-start.sh auto-provisions the VM
       4. Run `ccweb doctor` to verify everything is working
 
-    more info: https://nclandrei.github.io/ccw
+    more info: https://ccweb.nicolaeandrei.com
 """)
 
 
