@@ -1,4 +1,4 @@
-"""ccw CLI — Bootstrap Claude Code web environments."""
+"""ccweb CLI — Bootstrap Claude Code web environments."""
 
 from __future__ import annotations
 
@@ -97,7 +97,7 @@ def cmd_init(args: argparse.Namespace) -> None:
     print("  2. git commit -m 'Add Claude Code web environment setup'")
     print("  3. git push")
     print("  4. Start a Claude Code web session — session-start.sh auto-provisions")
-    print("  5. Run `ccw doctor` to verify everything is working")
+    print("  5. Run `ccweb doctor` to verify everything is working")
 
 
 def cmd_doctor(args: argparse.Namespace) -> None:
@@ -135,14 +135,14 @@ def cmd_doctor(args: argparse.Namespace) -> None:
             print(f"  --  {tool}: not found")
 
 
-DESCRIPTION = "ccw — Bootstrap Claude Code web environments."
+DESCRIPTION = "ccweb — Bootstrap Claude Code web environments."
 
 EPILOG = textwrap.dedent("""\
     examples:
-      uvx ccw init                                    Install everything
-      uvx ccw init --toolchains node,python           Just Node + Python
-      uvx ccw init --toolchains go --extras gh        Go project with gh CLI
-      uvx ccw init --force                            Overwrite existing scripts
+      uvx ccweb init                                    Install everything
+      uvx ccweb init --toolchains node,python           Just Node + Python
+      uvx ccweb init --toolchains go --extras gh        Go project with gh CLI
+      uvx ccweb init --force                            Overwrite existing scripts
 
     generated files:
       scripts/setup.sh           Paste into claude.ai/code "Setup script" field,
@@ -151,11 +151,11 @@ EPILOG = textwrap.dedent("""\
       scripts/diagnose.sh        Runtime diagnostics — run anytime to check status.
       .claude/settings.json      Hooks + permissions (merges with existing, never clobbers).
 
-    after running `ccw init`:
+    after running `ccweb init`:
       1. Commit the generated files
       2. Push to your repo
       3. Start a Claude Code web session — session-start.sh auto-provisions the VM
-      4. Run `ccw doctor` to verify everything is working
+      4. Run `ccweb doctor` to verify everything is working
 
     more info: https://nclandrei.github.io/ccw
 """)
@@ -163,13 +163,13 @@ EPILOG = textwrap.dedent("""\
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        prog="ccw",
+        prog="ccweb",
         description=DESCRIPTION,
         epilog=EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        "--version", action="version", version=f"ccw {__version__}"
+        "--version", action="version", version=f"ccweb {__version__}"
     )
 
     sub = parser.add_subparsers(dest="command")

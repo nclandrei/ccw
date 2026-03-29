@@ -17,7 +17,7 @@
     const tc = getSelected("toolchains");
     const ex = getSelected("extras");
 
-    let cmd = "uvx ccw init";
+    let cmd = "uvx ccweb init";
 
     // Only add flags if not "all"
     if (tc.length > 0 && tc.length < allToolchains.length) {

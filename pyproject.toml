@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "ccw"
+name = "ccweb"
 version = "0.1.0"
 description = "Bootstrap Claude Code web environments"
 readme = "README.md"
@@ -21,7 +21,7 @@ classifiers = [
 ]
 
 [project.scripts]
-ccw = "ccw.cli:main"
+ccweb = "ccw.cli:main"
 
 [project.urls]
 Homepage = "https://nclandrei.github.io/ccw"

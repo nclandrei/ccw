@@ -1,9 +1,9 @@
-# ccw
+# ccweb
 
 Bootstrap [Claude Code](https://claude.ai/code) web environments with one command.
 
 ```
-uvx ccw init
+uvx ccweb init
 ```
 
 Generates `setup.sh`, `session-start.sh`, `diagnose.sh`, and wires `.claude/settings.json` for your project. When you start a Claude Code web session, the VM is automatically provisioned with your selected toolchains.
@@ -12,7 +12,7 @@ Generates `setup.sh`, `session-start.sh`, `diagnose.sh`, and wires `.claude/sett
 
 ```bash
 # In your project root
-uvx ccw init
+uvx ccweb init
 
 # Commit and push
 git add scripts/ .claude/settings.json
@@ -21,16 +21,16 @@ git push
 
 # Start a Claude Code web session — it auto-provisions
 # Then verify:
-uvx ccw doctor
+uvx ccweb doctor
 ```
 
 ## Options
 
 ```
-uvx ccw init --toolchains node,python       # Just Node + Python
-uvx ccw init --toolchains go --extras gh    # Go with gh CLI
-uvx ccw init --force                        # Overwrite existing files
-uvx ccw init --scripts-dir ci/scripts       # Custom scripts directory
+uvx ccweb init --toolchains node,python       # Just Node + Python
+uvx ccweb init --toolchains go --extras gh    # Go with gh CLI
+uvx ccweb init --force                        # Overwrite existing files
+uvx ccweb init --scripts-dir ci/scripts       # Custom scripts directory
 ```
 
 ### Toolchains

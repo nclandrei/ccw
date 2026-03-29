@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ccw — Claude Code Web Setup</title>
+  <title>ccweb — Claude Code Web Setup</title>
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
   <div class="container">
-    <h1><code>ccw</code></h1>
+    <h1><code>ccweb</code></h1>
     <p class="subtitle">Bootstrap Claude Code web environments in one command.</p>
 
     <h2>Toolchains</h2>
@@ -43,24 +43,24 @@
     <h2>Command</h2>
     <div class="command-box">
       <span class="prefix">$</span>
-      <code id="command-text">uvx ccw init</code>
+      <code id="command-text">uvx ccweb init</code>
       <button id="copy-btn">Copy</button>
     </div>
 
     <div class="steps">
       <h2 style="margin-top: 0;">After running the command</h2>
       <ol>
-        <li>Commit: <code>git add scripts/ .claude/ && git commit -m "Add ccw setup"</code></li>
+        <li>Commit: <code>git add scripts/ .claude/ && git commit -m "Add ccweb setup"</code></li>
         <li>Push to your repo</li>
         <li>Start a Claude Code web session — it auto-provisions the VM</li>
-        <li>Run <code>ccw doctor</code> to verify</li>
+        <li>Run <code>ccweb doctor</code> to verify</li>
       </ol>
     </div>
 
     <footer>
       <p>
         <a href="https://github.com/nclandrei/ccw">GitHub</a> &middot;
-        <a href="https://pypi.org/project/ccw/">PyPI</a> &middot;
+        <a href="https://pypi.org/project/ccweb/">PyPI</a> &middot;
         <a href="llms.txt">llms.txt</a>
       </p>
     </footer>

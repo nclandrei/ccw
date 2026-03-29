@@ -1,8 +1,8 @@
-# ccw — Claude Code Web Setup
+# ccweb — Claude Code Web Setup
 
 > Bootstrap Claude Code web environments with one command.
 
-ccw generates setup scripts for Claude Code cloud VMs (Ubuntu 24.04).
+ccweb generates setup scripts for Claude Code cloud VMs (Ubuntu 24.04).
 It creates setup.sh (system provisioning), session-start.sh (SessionStart hook),
 diagnose.sh (runtime diagnostics), and wires .claude/settings.json.
 
@@ -11,32 +11,32 @@ diagnose.sh (runtime diagnostics), and wires .claude/settings.json.
 No install needed. Run directly with uv:
 
 ```
-uvx ccw init
+uvx ccweb init
 ```
 
 Or install globally:
 
 ```
-pip install ccw
+pip install ccweb
 ```
 
 ## Usage
 
 ```
 # Install all toolchains and extras
-uvx ccw init
+uvx ccweb init
 
 # Just Node.js and Python
-uvx ccw init --toolchains node,python
+uvx ccweb init --toolchains node,python
 
 # Go project with gh CLI
-uvx ccw init --toolchains go --extras gh
+uvx ccweb init --toolchains go --extras gh
 
 # Overwrite existing files
-uvx ccw init --force
+uvx ccweb init --force
 
 # Check environment status
-uvx ccw doctor
+uvx ccweb doctor
 ```
 
 ## Toolchains
@@ -57,5 +57,5 @@ gh (GitHub CLI), uv (Python package manager), pnpm, yarn, bun, browser (Playwrig
 ## Links
 
 - Source: https://github.com/nclandrei/ccw
-- PyPI: https://pypi.org/project/ccw/
+- PyPI: https://pypi.org/project/ccweb/
 - Web: https://nclandrei.github.io/ccw
