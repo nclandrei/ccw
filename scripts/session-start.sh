@@ -26,25 +26,33 @@ fi
 set -a; source /etc/environment 2>/dev/null || true; set +a
 
 # ── Detect toolchain paths ──────────────────────────────────────────────────
-UV_BIN=""; [ -d /root/.local/bin ] && UV_BIN="/root/.local/bin"
-
-
-# ── Persist env vars for Claude's Bash tool ──────────────────────────────────
 _persist() {
   local k="$1" v="$2"
   [ -n "${CLAUDE_ENV_FILE:-}" ] && echo "${k}=${v}" >> "$CLAUDE_ENV_FILE"
   export "${k}=${v}"
 }
 
-
 NEW_PATH=""
-[ -n "${UV_BIN:-}" ] && NEW_PATH="${UV_BIN}:${NEW_PATH}"
-[ -n "$NEW_PATH" ] && _persist PATH "${NEW_PATH}:${PATH}"
+# uv / Python tools
+[ -d /root/.local/bin ] && NEW_PATH="/root/.local/bin:${NEW_PATH}"
+# Go
+[ -d /usr/local/go/bin ] && NEW_PATH="/usr/local/go/bin:${NEW_PATH}"
+# Rust
+[ -d /root/.cargo/bin ] && NEW_PATH="/root/.cargo/bin:${NEW_PATH}"
+# Node.js (discover pre-installed versions)
+for d in /opt/node*/bin; do [ -d "$d" ] && NEW_PATH="${d}:${NEW_PATH}"; done
+# Ruby rbenv
+for d in /opt/rbenv/versions/*/bin /opt/rbenv/shims; do [ -d "$d" ] && NEW_PATH="${d}:${NEW_PATH}"; done
+
+[ -n "$NEW_PATH" ] && _persist PATH "${NEW_PATH}${PATH}"
 
 # Fallback for when CLAUDE_ENV_FILE isn't available
 if [ -z "${CLAUDE_ENV_FILE:-}" ]; then
   cat > /etc/profile.d/claude-code-env.sh <<'PROFILE'
-export PATH="/root/.local/bin:$PATH"
+export PATH="/usr/local/go/bin:/root/.cargo/bin:/root/.local/bin:$PATH"
+for d in /opt/node*/bin /opt/rbenv/versions/*/bin /opt/rbenv/shims; do
+  [ -d "$d" ] && export PATH="$d:$PATH"
+done
 PROFILE
 fi
 
