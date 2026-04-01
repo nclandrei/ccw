@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ccweb"
-version = "0.1.0"
+version = "0.2.0"
 description = "Bootstrap Claude Code web environments"
 readme = "README.md"
 license = "MIT"
@@ -27,5 +27,5 @@ packages = ["src/ccw"]
 ccweb = "ccw.cli:main"
 
 [project.urls]
-Homepage = "https://ccweb.nicolaeandrei.com"
+Homepage = "https://github.com/nclandrei/ccweb"
 Repository = "https://github.com/nclandrei/ccweb"
