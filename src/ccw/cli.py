@@ -135,89 +135,176 @@ def cmd_doctor(args: argparse.Namespace) -> None:
             print(f"  --  {tool}: not found")
 
 
-DESCRIPTION = "ccweb — Bootstrap Claude Code web environments."
+HELP_TEXT = textwrap.dedent("""\
+ccweb - bootstrap Claude Code web environments so they just work
 
-EPILOG = textwrap.dedent("""\
-    examples:
-      uvx ccweb init                                    Install everything
-      uvx ccweb init --toolchains node,python           Just Node + Python
-      uvx ccweb init --toolchains go --extras gh        Go project with gh CLI
-      uvx ccweb init --force                            Overwrite existing scripts
+ccweb generates shell scripts that auto-provision a fresh Ubuntu 24.04 VM
+every time a Claude Code web session starts. The agent (or human) runs
+ccweb once locally, commits the output, and every future cloud session
+gets the right toolchains, package managers, CLI tools, and browser
+automation without manual setup.
 
-    generated files:
-      scripts/setup.sh           Paste into claude.ai/code "Setup script" field,
-                                 or let session-start.sh auto-run it on first session.
-      scripts/session-start.sh   SessionStart hook — detects lockfiles, installs deps.
-      scripts/diagnose.sh        Runtime diagnostics — run anytime to check status.
-      .claude/settings.json      Hooks + permissions (merges with existing, never clobbers).
+Reading this help text is not the task.
+The task is to run ccweb init in the project root, commit the generated
+files, push, and start a Claude Code web session. The VM provisions itself.
 
-    after running `ccweb init`:
-      1. Commit the generated files
-      2. Push to your repo
-      3. Start a Claude Code web session — session-start.sh auto-provisions the VM
-      4. Run `ccweb doctor` to verify everything is working
+Commands:
+  ccweb init                   Generate scripts and wire settings.json
+  ccweb init --toolchains TC   Comma-separated: node,python,go,rust,ruby,
+                               java,deno,elixir,zig,dotnet,php (default: all)
+  ccweb init --extras EX       Comma-separated: gh,uv,pnpm,yarn,bun,browser,
+                               sqlite,postgres,redis,docker (default: all)
+  ccweb init --scripts-dir D   Output directory for scripts (default: scripts)
+  ccweb init --force           Overwrite existing files without prompting
+  ccweb doctor                 Run diagnostics on the current environment
 
-    more info: https://ccweb.nicolaeandrei.com
+What ccweb init generates:
+  scripts/setup.sh             Runs as root on first session. Installs system
+                               packages, toolchains, package managers, and CLI
+                               tools. Idempotent — safe to run multiple times.
+                               Can also be pasted into the "Setup script" field
+                               at claude.ai/code for faster cold starts.
+  scripts/session-start.sh     SessionStart hook — runs every session (new or
+                               resumed). Auto-triggers setup.sh if the setup
+                               marker is missing. Detects lockfiles and installs
+                               project dependencies (npm, pip, cargo, go mod, etc).
+  scripts/diagnose.sh          Prints green/red status for every installed tool.
+                               Run anytime to verify the environment.
+  .claude/settings.json        Wires session-start.sh as a SessionStart hook.
+                               Merges with existing settings, never clobbers.
+
+Toolchains (what each installs):
+  node       Pre-installed on the VM. ccweb wires dependency install from
+             lockfiles (package-lock.json, pnpm-lock.yaml, yarn.lock, bun.lock).
+  python     Pre-installed. Adds uv automatically. Installs from pyproject.toml
+             or requirements.txt via uv/pip.
+  go         Installs Go 1.24. Downloads modules from go.mod.
+  rust       Installs via rustup (stable, minimal profile). Cargo fetch from
+             Cargo.toml. Adds ~/.cargo/bin to PATH.
+  ruby       Pre-installed. Runs bundle install from Gemfile.
+  java       Pre-installed (Java 21).
+  deno       Installs from deno.land. Runs deno install from deno.json.
+  elixir     Installs Erlang + Elixir via apt. Runs mix deps.get from mix.exs.
+  zig        Installs Zig 0.15.2 from ziglang.org.
+  dotnet     Installs .NET SDK via official install script. Runs dotnet restore.
+  php        Installs PHP CLI + Composer via apt. Runs composer install.
+
+Extras (what each installs):
+  gh         GitHub CLI (gh 2.74). Required for gh pr, gh issue, etc.
+  uv         Fast Python package manager. Auto-added when python is selected.
+  pnpm       Installed via npm install -g, symlinked to /usr/local/bin.
+  yarn       Installed via npm install -g, symlinked to /usr/local/bin.
+  bun        Pre-installed on the VM.
+  browser    Installs Playwright Chromium + system dependencies. Symlinks to
+             /usr/local/bin/chromium and /usr/local/bin/google-chrome so any
+             tool can find it via PATH. Needed for Puppeteer, Playwright, or
+             any headless browser automation.
+  sqlite     Installs sqlite3 CLI + libsqlite3-dev.
+  postgres   Installs PostgreSQL client (psql).
+  redis      Installs redis-cli (redis-tools).
+  docker     Installs Docker CLI. Note: the Docker daemon is not available on
+             the VM, but the CLI is useful for docker compose files and remote
+             Docker hosts.
+
+How it works at runtime:
+  1. User opens a Claude Code web session on a repo that has ccweb scripts.
+  2. Claude Code runs session-start.sh via the SessionStart hook.
+  3. session-start.sh checks for the setup marker in /etc/environment.
+     If missing (first session on this VM), it runs setup.sh automatically.
+  4. setup.sh installs everything as root. Takes 1-3 minutes depending on
+     selected toolchains. Writes a marker to /etc/environment so it only
+     runs once per VM.
+  5. session-start.sh detects lockfiles and installs project dependencies.
+  6. The session is ready. All tools are on PATH.
+
+  On resumed sessions (same VM), setup.sh is skipped (marker exists) and
+  only dependency install runs. This takes seconds.
+
+Workflow — what an agent should do:
+  1. cd into the project root
+  2. run: uvx ccweb init
+     or for a specific stack: uvx ccweb init --toolchains node,python --extras gh,browser
+  3. commit: git add scripts/ .claude/settings.json
+  4. commit: git commit -m 'Add Claude Code web environment setup'
+  5. push: git push
+  6. start a Claude Code web session — it provisions automatically
+  7. verify: ask the session to run bash scripts/diagnose.sh
+
+  To verify an existing setup without generating new scripts:
+  ccweb doctor
+
+Environment:
+  The target VM is Ubuntu 24.04 LTS with 4 cores, 15 GiB RAM, 30 GB disk.
+  Node.js 20, Python 3.11, Ruby 3.3, Java 21, and bun are pre-installed.
+  Scripts run as root. Network access is available during setup.
+
+  CLAUDE_CODE_REMOTE is set to "true" in web sessions. session-start.sh
+  checks this variable and exits immediately in local environments, so
+  the hook is safe to leave wired on all machines.
+
+Examples:
+  # Full setup — every toolchain and extra
+  uvx ccweb init
+
+  # Node + Python project (most common)
+  uvx ccweb init --toolchains node,python --extras gh,uv,browser
+
+  # Go backend with database tools
+  uvx ccweb init --toolchains go --extras gh,postgres,redis
+
+  # Rust project, minimal extras
+  uvx ccweb init --toolchains rust --extras gh
+
+  # Overwrite existing scripts after upgrading ccweb
+  uvx ccweb init --force
+
+  # Check what's installed on the current VM
+  ccweb doctor
 """)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        prog="ccweb",
-        description=DESCRIPTION,
-        epilog=EPILOG,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    parser.add_argument(
-        "--version", action="version", version=f"ccweb {__version__}"
-    )
+    # Show the full help text for --help and bare invocation,
+    # but use argparse for flag parsing.
+    if len(sys.argv) < 2 or sys.argv[1] in ("--help", "-h", "help"):
+        if "--version" in sys.argv:
+            print(f"ccweb {__version__}")
+        else:
+            print(HELP_TEXT)
+        sys.exit(0)
 
+    if sys.argv[1] == "--version":
+        print(f"ccweb {__version__}")
+        sys.exit(0)
+
+    parser = argparse.ArgumentParser(prog="ccweb", add_help=False)
     sub = parser.add_subparsers(dest="command")
 
     # init
-    init_p = sub.add_parser(
-        "init",
-        help="Generate setup scripts for the current project",
-        description="Generate setup.sh, session-start.sh, diagnose.sh, and wire settings.json.",
-    )
-    init_p.add_argument(
-        "--toolchains",
-        default="all",
-        metavar="TC",
-        help="Comma-separated: node,python,go,rust,ruby,java,deno,elixir,zig,dotnet,php (default: all)",
-    )
-    init_p.add_argument(
-        "--extras",
-        default="all",
-        metavar="EX",
-        help="Comma-separated: gh,uv,pnpm,yarn,bun,browser,sqlite,postgres,redis,docker (default: all)",
-    )
-    init_p.add_argument(
-        "--scripts-dir",
-        default="scripts",
-        metavar="DIR",
-        help="Output directory for scripts (default: scripts)",
-    )
-    init_p.add_argument(
-        "--force",
-        action="store_true",
-        help="Overwrite existing files without prompting",
-    )
+    init_p = sub.add_parser("init", add_help=False)
+    init_p.add_argument("--toolchains", default="all")
+    init_p.add_argument("--extras", default="all")
+    init_p.add_argument("--scripts-dir", default="scripts")
+    init_p.add_argument("--force", action="store_true")
+    init_p.add_argument("-h", "--help", action="store_true")
 
     # doctor
-    sub.add_parser(
-        "doctor",
-        help="Check if the environment is correctly configured",
-        description="Run diagnostics on the current environment.",
-    )
+    doctor_p = sub.add_parser("doctor", add_help=False)
+    doctor_p.add_argument("-h", "--help", action="store_true")
 
     args = parser.parse_args()
+
+    # Subcommand --help falls through to the full help text
+    if getattr(args, "help", False):
+        print(HELP_TEXT)
+        sys.exit(0)
+
     if args.command == "init":
         cmd_init(args)
     elif args.command == "doctor":
         cmd_doctor(args)
     else:
-        parser.print_help()
+        print(HELP_TEXT)
         sys.exit(0)
 
 
