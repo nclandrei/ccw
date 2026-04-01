@@ -51,10 +51,6 @@ uvx ccweb init --scripts-dir ci/scripts       # Custom scripts directory
 
 4. **`.claude/settings.json`** wires the SessionStart hook so `session-start.sh` runs automatically.
 
-## Web configurator
-
-Use the interactive configurator at **[ccweb.nicolaeandrei.com](https://ccweb.nicolaeandrei.com)** to pick toolchains and copy the command.
-
 ## License
 
 MIT
