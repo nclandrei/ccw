@@ -28,4 +28,4 @@ ccweb = "ccw.cli:main"
 
 [project.urls]
 Homepage = "https://ccweb.nicolaeandrei.com"
-Repository = "https://github.com/nclandrei/ccw"
+Repository = "https://github.com/nclandrei/ccweb"
