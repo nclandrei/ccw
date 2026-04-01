@@ -76,6 +76,13 @@ if [ -z "$PLAYWRIGHT_CHROMIUM" ]; then
   PLAYWRIGHT_CHROMIUM=$(find /root/.cache/ms-playwright -name "headless_shell" -path "*/chrome-linux/headless_shell" 2>/dev/null | head -1)
 fi
 
+# Symlink to standard PATH locations so tools find Chromium without env vars
+if [ -n "$PLAYWRIGHT_CHROMIUM" ]; then
+  ln -sf "$PLAYWRIGHT_CHROMIUM" /usr/local/bin/chromium
+  ln -sf "$PLAYWRIGHT_CHROMIUM" /usr/local/bin/google-chrome
+  ln -sf "$PLAYWRIGHT_CHROMIUM" /usr/local/bin/chromium-browser
+fi
+
 # Move mismatched pre-installed chromedriver aside
 for p in /opt/node22/bin/chromedriver /opt/node20/bin/chromedriver; do
   [ -f "$p" ] && [ ! -f "${p}.orig" ] && mv "$p" "${p}.orig"
@@ -174,11 +181,11 @@ def setup_zig() -> str:
 # ── Zig ──────────────────────────────────────────────────────────────────────
 if ! _installed zig; then
   t=$(date +%s)
-  ZIG_VERSION="0.14.1"
+  ZIG_VERSION="0.15.2"
   echo "Installing Zig ${ZIG_VERSION}..."
-  curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz" \\
+  curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz" \\
     | tar -C /usr/local -xJf -
-  ln -sf /usr/local/zig-linux-x86_64-${ZIG_VERSION}/zig /usr/local/bin/zig
+  ln -sf /usr/local/zig-x86_64-linux-${ZIG_VERSION}/zig /usr/local/bin/zig
   _timer "Zig ${ZIG_VERSION}" "$t"
 fi
 """
@@ -190,12 +197,9 @@ def setup_dotnet() -> str:
 if ! _installed dotnet; then
   t=$(date +%s)
   echo "Installing .NET SDK..."
-  apt-get update -qq
-  apt-get install -y -qq --no-install-recommends dotnet-sdk-8.0 2>/dev/null \\
-    || {
-      curl -fsSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel 8.0 2>/dev/null || true
-      [ -f /root/.dotnet/dotnet ] && ln -sf /root/.dotnet/dotnet /usr/local/bin/dotnet
-    }
+  # Use the official install script — works on all Ubuntu versions reliably
+  curl -fsSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel STS 2>/dev/null || true
+  [ -f /root/.dotnet/dotnet ] && ln -sf /root/.dotnet/dotnet /usr/local/bin/dotnet
   _timer ".NET" "$t"
 fi
 """
@@ -277,25 +281,27 @@ def setup_node_managers(extras: set[str]) -> str:
     parts = [
         '# ── Node.js package managers ────────────────────────────────────────────────',
         't=$(date +%s)',
-        'NPM_GLOBAL_BIN="$(npm config get prefix 2>/dev/null)/bin"',
+        '# Ensure npm global bin is on PATH for this script',
+        'NPM_PREFIX="$(npm config get prefix 2>/dev/null)"',
+        'export PATH="${NPM_PREFIX}/bin:${PATH}"',
     ]
     if "pnpm" in extras:
-        parts.append('_installed pnpm || npm install -g pnpm 2>/dev/null || true')
+        parts.append('_installed pnpm || npm install -g pnpm || true')
     if "yarn" in extras:
-        parts.append('_installed yarn || npm install -g yarn 2>/dev/null || true')
+        parts.append('_installed yarn || npm install -g yarn || true')
 
+    # Symlink into /usr/local/bin so they're always findable
     bins = []
     if "pnpm" in extras:
         bins.extend(["pnpm", "pnpx"])
     if "yarn" in extras:
         bins.extend(["yarn", "yarnpkg"])
-
     if bins:
         bin_list = " ".join(bins)
         parts.append(f'for bin in {bin_list}; do')
-        parts.append('  [ -f "${NPM_GLOBAL_BIN}/${bin}" ] && [ ! -e "/usr/local/bin/${bin}" ] \\')
-        parts.append('    && ln -sf "${NPM_GLOBAL_BIN}/${bin}" "/usr/local/bin/${bin}"')
-        parts.append("done")
+        parts.append('  SRC="${NPM_PREFIX}/bin/${bin}"')
+        parts.append('  [ -f "$SRC" ] && [ ! -e "/usr/local/bin/${bin}" ] && ln -sf "$SRC" "/usr/local/bin/${bin}"')
+        parts.append('done')
 
     parts.append('_timer "JS package managers" "$t"')
     return "\n".join(parts) + "\n"
@@ -310,17 +316,22 @@ def setup_env_block(toolchains: set[str], extras: set[str]) -> str:
         '${MARKER}',
     ]
     if "browser" in extras:
-        lines.extend([
-            'PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=${PLAYWRIGHT_CHROMIUM:-}',
-            'PUPPETEER_EXECUTABLE_PATH=${PLAYWRIGHT_CHROMIUM:-}',
-            'PUPPETEER_SKIP_DOWNLOAD=true',
-            'CHROME_BIN=${PLAYWRIGHT_CHROMIUM:-}',
-        ])
+        lines.append('PUPPETEER_SKIP_DOWNLOAD=true')
     if "go" in toolchains:
         lines.append('GOPATH=/root/go')
     if "dotnet" in toolchains:
-        lines.append('DOTNET_ROOT=/usr/lib/dotnet')
+        lines.append('DOTNET_ROOT=/root/.dotnet')
     lines.append('ENVEOF')
+
+    # Browser env vars use the resolved path (heredoc is unquoted, so $PLAYWRIGHT_CHROMIUM expands)
+    if "browser" in extras:
+        lines.extend([
+            '  if [ -n "${PLAYWRIGHT_CHROMIUM:-}" ]; then',
+            '    echo "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=${PLAYWRIGHT_CHROMIUM}" >> /etc/environment',
+            '    echo "PUPPETEER_EXECUTABLE_PATH=${PLAYWRIGHT_CHROMIUM}" >> /etc/environment',
+            '    echo "CHROME_BIN=${PLAYWRIGHT_CHROMIUM}" >> /etc/environment',
+            '  fi',
+        ])
 
     # PATH construction
     path_parts = []
@@ -345,7 +356,7 @@ def setup_env_block(toolchains: set[str], extras: set[str]) -> str:
     if "go" in toolchains:
         lines.append('export GOPATH=/root/go')
     if "dotnet" in toolchains:
-        lines.append('export DOTNET_ROOT=/usr/lib/dotnet')
+        lines.append('export DOTNET_ROOT=/root/.dotnet')
     if path_parts:
         path_str = ":".join(path_parts)
         lines.append(f'export PATH="{path_str}:$PATH"')
@@ -490,6 +501,7 @@ fi
 
 # Source persisted env vars from setup.sh
 set -a; source /etc/environment 2>/dev/null || true; set +a
+
 """
 
 
@@ -540,7 +552,7 @@ def session_persist_env(toolchains: set[str], extras: set[str]) -> str:
     if "go" in toolchains:
         lines.append('_persist GOPATH                             "/root/go"')
     if "dotnet" in toolchains:
-        lines.append('_persist DOTNET_ROOT                        "/usr/lib/dotnet"')
+        lines.append('_persist DOTNET_ROOT                        "/root/.dotnet"')
 
     # PATH
     path_parts = []
@@ -568,7 +580,7 @@ def session_persist_env(toolchains: set[str], extras: set[str]) -> str:
     if "go" in toolchains:
         lines.append('export GOPATH=/root/go')
     if "dotnet" in toolchains:
-        lines.append('export DOTNET_ROOT=/usr/lib/dotnet')
+        lines.append('export DOTNET_ROOT=/root/.dotnet')
 
     fallback_path_parts = []
     if "rust" in toolchains:
@@ -780,7 +792,7 @@ def build_diagnose_sh(toolchains: set[str], extras: set[str]) -> str:
             'echo "Browser Automation"',
             'CHROMIUM=$(find /root/.cache/ms-playwright -name "chrome" -path "*/chrome-linux/chrome" 2>/dev/null | head -1)',
             '[ -n "$CHROMIUM" ] && ok "Playwright Chromium: $CHROMIUM" || fail "Playwright Chromium: not found"',
-            '[ -n "${PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH:-}" ] && ok "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH set" || warn "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH not set"',
+            'command -v chromium &>/dev/null && ok "chromium symlink: $(which chromium)" || warn "chromium not on PATH"',
         ])
 
     lines.extend([
