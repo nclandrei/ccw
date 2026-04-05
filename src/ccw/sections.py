@@ -671,23 +671,48 @@ def session_deps(toolchains: set[str]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def session_skills(skills_dir: str) -> str:
+    """Generate logic that symlinks repo skills into ~/.claude/skills/."""
+    return f"""\
+
+# ── Wire user-level Claude Code skills ───────────────────────────────────────
+# Symlinks each subdirectory of ${{CLAUDE_PROJECT_DIR}}/{skills_dir} that
+# contains SKILL.md into ~/.claude/skills/<name> so Claude Code discovers
+# them at the user level (available across every session on this VM).
+SKILLS_SRC="${{CLAUDE_PROJECT_DIR:-$(pwd)}}/{skills_dir}"
+SKILLS_DST="${{HOME:-/root}}/.claude/skills"
+if [ -d "$SKILLS_SRC" ]; then
+  mkdir -p "$SKILLS_DST"
+  for skill in "$SKILLS_SRC"/*/; do
+    [ -d "$skill" ] || continue
+    [ -f "${{skill}}SKILL.md" ] || continue
+    name=$(basename "$skill")
+    ln -sfn "${{skill%/}}" "${{SKILLS_DST}}/${{name}}"
+    echo "  wired skill: ${{name}}"
+  done
+fi
+"""
+
+
 def build_session_start_sh(
-    toolchains: set[str], extras: set[str], scripts_dir: str
+    toolchains: set[str], extras: set[str], scripts_dir: str, skills_dir: str = ""
 ) -> str:
     """Assemble session-start.sh from selected sections."""
     parts = [
         session_header(scripts_dir),
         session_env_detect(toolchains, extras),
         session_persist_env(toolchains, extras),
-        session_deps(toolchains),
     ]
+    if skills_dir:
+        parts.append(session_skills(skills_dir))
+    parts.append(session_deps(toolchains))
     return "\n".join(parts)
 
 
 # ── diagnose.sh ──────────────────────────────────────────────────────────────
 
 
-def build_diagnose_sh(toolchains: set[str], extras: set[str]) -> str:
+def build_diagnose_sh(toolchains: set[str], extras: set[str], skills_dir: str = "") -> str:
     """Generate diagnose.sh for the selected toolchains/extras."""
     lines = [
         '#!/bin/bash',
@@ -793,6 +818,26 @@ def build_diagnose_sh(toolchains: set[str], extras: set[str]) -> str:
             'CHROMIUM=$(find /root/.cache/ms-playwright -name "chrome" -path "*/chrome-linux/chrome" 2>/dev/null | head -1)',
             '[ -n "$CHROMIUM" ] && ok "Playwright Chromium: $CHROMIUM" || fail "Playwright Chromium: not found"',
             'command -v chromium &>/dev/null && ok "chromium symlink: $(which chromium)" || warn "chromium not on PATH"',
+        ])
+
+    if skills_dir:
+        lines.extend([
+            '',
+            'echo ""',
+            'echo "Claude Code Skills"',
+            f'SKILLS_SRC="$(cd "$(dirname "${{BASH_SOURCE[0]}}")/.." && pwd)/{skills_dir}"',
+            'SKILLS_DST="${HOME:-/root}/.claude/skills"',
+            '[ -d "$SKILLS_SRC" ] && ok "source: $SKILLS_SRC" || warn "source dir missing: $SKILLS_SRC"',
+            'if [ -d "$SKILLS_SRC" ]; then',
+            '  for skill in "$SKILLS_SRC"/*/; do',
+            '    [ -d "$skill" ] || continue',
+            '    [ -f "${skill}SKILL.md" ] || continue',
+            '    name=$(basename "$skill")',
+            '    if [ -L "${SKILLS_DST}/${name}" ]; then ok "${name}: wired -> $(readlink "${SKILLS_DST}/${name}")"',
+            '    elif [ -e "${SKILLS_DST}/${name}" ]; then warn "${name}: exists but not a symlink"',
+            '    else fail "${name}: not wired"; fi',
+            '  done',
+            'fi',
         ])
 
     lines.extend([

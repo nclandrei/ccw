@@ -31,6 +31,7 @@ uvx ccweb init --toolchains node,python       # Just Node + Python
 uvx ccweb init --toolchains go --extras gh    # Go with gh CLI
 uvx ccweb init --force                        # Overwrite existing files
 uvx ccweb init --scripts-dir ci/scripts       # Custom scripts directory
+uvx ccweb init --skills .claude/skills        # Wire repo skills to ~/.claude/skills
 ```
 
 ### Toolchains
@@ -40,6 +41,18 @@ uvx ccweb init --scripts-dir ci/scripts       # Custom scripts directory
 ### Extras
 
 `gh`, `uv`, `pnpm`, `yarn`, `bun`, `browser`, `sqlite`, `postgres`, `redis`, `docker` — default: all
+
+### Skills
+
+Point `--skills DIR` at a directory in your repo containing Claude Code skills
+(each subdirectory holds a `SKILL.md`). On session start, every skill is
+symlinked into `~/.claude/skills/<name>` so Claude Code discovers them at the
+user level across every session on the VM. Default: disabled.
+
+```
+<repo>/<DIR>/my-skill/SKILL.md
+<repo>/<DIR>/my-skill/reference.md
+```
 
 ## How it works
 
