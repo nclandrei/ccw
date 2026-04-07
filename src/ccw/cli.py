@@ -49,7 +49,7 @@ def cmd_init(args: argparse.Namespace) -> None:
     toolchains = _parse_set(args.toolchains, ALL_TOOLCHAINS, "toolchains")
     extras = _parse_set(args.extras, ALL_EXTRAS, "extras")
     scripts_dir = args.scripts_dir
-    skills_dir = (args.skills or "").strip().strip("/")
+    skills_dir = (args.skills).strip().strip("/")
     force = args.force
 
     # Auto-add uv when python is selected
@@ -161,7 +161,8 @@ Commands:
   ccweb init --skills DIR      Path (repo-relative) to a directory of Claude
                                Code skills. Each subdirectory containing
                                SKILL.md is symlinked into ~/.claude/skills/
-                               at session start (default: disabled).
+                               at session start (default: .claude/skills).
+                               Pass --skills "" to disable.
   ccweb init --force           Overwrite existing files without prompting
   ccweb doctor                 Run diagnostics on the current environment
 
@@ -213,21 +214,20 @@ Extras (what each installs):
              the VM, but the CLI is useful for docker compose files and remote
              Docker hosts.
 
-Skills (--skills DIR):
+Skills (--skills DIR, default: .claude/skills):
   Claude Code auto-discovers skills from ~/.claude/skills/<name>/SKILL.md.
-  When --skills DIR is passed, session-start.sh iterates DIR in the repo
-  and, for every subdirectory that contains a SKILL.md file, creates a
-  symlink at ~/.claude/skills/<name> pointing back to the in-repo skill.
+  By default, session-start.sh looks for skills in .claude/skills/ in the
+  repo and, for every subdirectory that contains a SKILL.md file, creates
+  a symlink at ~/.claude/skills/<name> pointing back to the in-repo skill.
   This makes the repo's skills available at the user level for every
   session on the VM, without copying files. Typical layout:
 
-    <repo>/<DIR>/my-skill/SKILL.md
-    <repo>/<DIR>/my-skill/reference.md
-    <repo>/<DIR>/another-skill/SKILL.md
+    .claude/skills/my-skill/SKILL.md
+    .claude/skills/my-skill/reference.md
+    .claude/skills/another-skill/SKILL.md
 
-  Example: --skills .claude/skills    (dog-foods project-level skills
-                                       at user level too)
-           --skills ai/skills         (custom path)
+  Pass --skills "" to disable skill wiring entirely.
+  Example: --skills ai/skills         (custom path)
 
 How it works at runtime:
   1. User opens a Claude Code web session on a repo that has ccweb scripts.
@@ -311,7 +311,7 @@ def main() -> None:
     init_p.add_argument("--toolchains", default="all")
     init_p.add_argument("--extras", default="all")
     init_p.add_argument("--scripts-dir", default="scripts")
-    init_p.add_argument("--skills", default="")
+    init_p.add_argument("--skills", default=".claude/skills")
     init_p.add_argument("--force", action="store_true")
     init_p.add_argument("-h", "--help", action="store_true")
 
