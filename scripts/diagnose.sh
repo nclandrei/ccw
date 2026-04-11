@@ -58,8 +58,12 @@ echo "CLI Tools"
 _check git
 _check gh
 _check jq
+_check yq
 _check curl
+_check duckdb
 _check sqlite3
+_check pandoc
+_check shellcheck
 _check psql
 _check redis-cli
 _check Docker docker

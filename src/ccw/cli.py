@@ -23,7 +23,9 @@ from .settings import merge_settings
 def _parse_set(value: str, valid: set[str], label: str) -> set[str]:
     if value == "all":
         return set(valid)
-    items = {s.strip().lower() for s in value.split(",")}
+    if value.strip() == "":
+        return set()
+    items = {s.strip().lower() for s in value.split(",") if s.strip()}
     unknown = items - valid
     if unknown:
         print(f"Error: unknown {label}: {', '.join(sorted(unknown))}", file=sys.stderr)
@@ -155,8 +157,8 @@ Commands:
   ccweb init                   Generate scripts and wire settings.json
   ccweb init --toolchains TC   Comma-separated: node,python,go,rust,ruby,
                                java,deno,elixir,zig,dotnet,php (default: all)
-  ccweb init --extras EX       Comma-separated: gh,uv,pnpm,yarn,bun,browser,
-                               sqlite,postgres,redis,docker (default: all)
+  ccweb init --extras EX       Comma-separated: uv,pnpm,yarn,bun,browser,
+                               postgres,redis,docker (default: all)
   ccweb init --scripts-dir D   Output directory for scripts (default: scripts)
   ccweb init --skills DIR      Path (repo-relative) to a directory of Claude
                                Code skills. Each subdirectory containing
@@ -197,8 +199,16 @@ Toolchains (what each installs):
   dotnet     Installs .NET SDK via official install script. Runs dotnet restore.
   php        Installs PHP CLI + Composer via apt. Runs composer install.
 
+Always-on CLI tools (installed unconditionally, no flag needed):
+  Core:      jq, yq, curl, wget, httpie, ripgrep, fd-find, bat, tree, htop
+  Shell:     shellcheck, shfmt, make, build-essential
+  Git:       git, gh (GitHub CLI), git-lfs
+  Data:      sqlite3, duckdb (analytical SQL over CSV/JSON/Parquet)
+  Docs:      pandoc
+  Files:     unzip, zip, rsync
+  These are small, universally useful, and have no reason to be gated.
+
 Extras (what each installs):
-  gh         GitHub CLI (gh 2.74). Required for gh pr, gh issue, etc.
   uv         Fast Python package manager. Auto-added when python is selected.
   pnpm       Installed via npm install -g, symlinked to /usr/local/bin.
   yarn       Installed via npm install -g, symlinked to /usr/local/bin.
@@ -207,7 +217,6 @@ Extras (what each installs):
              /usr/local/bin/chromium and /usr/local/bin/google-chrome so any
              tool can find it via PATH. Needed for Puppeteer, Playwright, or
              any headless browser automation.
-  sqlite     Installs sqlite3 CLI + libsqlite3-dev.
   postgres   Installs PostgreSQL client (psql).
   redis      Installs redis-cli (redis-tools).
   docker     Installs Docker CLI. Note: the Docker daemon is not available on
@@ -270,13 +279,13 @@ Examples:
   uvx ccweb init
 
   # Node + Python project (most common)
-  uvx ccweb init --toolchains node,python --extras gh,uv,browser
+  uvx ccweb init --toolchains node,python --extras uv,browser
 
   # Go backend with database tools
-  uvx ccweb init --toolchains go --extras gh,postgres,redis
+  uvx ccweb init --toolchains go --extras postgres,redis
 
-  # Rust project, minimal extras
-  uvx ccweb init --toolchains rust --extras gh
+  # Rust project, no opt-in extras (always-on CLI tools still included)
+  uvx ccweb init --toolchains rust --extras ""
 
   # Wire user-level skills from a repo directory
   uvx ccweb init --skills .claude/skills
