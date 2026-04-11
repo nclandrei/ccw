@@ -24,10 +24,52 @@ apt-get update -qq
 apt-get install -y -qq --no-install-recommends \
   jq curl wget httpie build-essential \
   tree htop ripgrep fd-find bat \
+  shellcheck shfmt pandoc git-lfs \
+  unzip zip rsync make \
+  sqlite3 libsqlite3-dev \
   2>/dev/null || true
 
 apt-get clean
 _timer "System packages" "$t"
+
+# ── CLI tools (GitHub-release binaries) ─────────────────────────────────────
+# gh — GitHub CLI
+if ! _installed gh; then
+  t=$(date +%s)
+  echo "Installing gh CLI..."
+  GH_VERSION="2.74.1"
+  curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.deb" \
+    -o /tmp/gh.deb && dpkg -i /tmp/gh.deb && rm -f /tmp/gh.deb \
+    || apt-get install -y -qq gh 2>/dev/null \
+    || echo "  Warning: gh CLI installation failed (non-fatal)"
+  _timer "gh CLI" "$t"
+fi
+
+# duckdb — analytical SQL over CSV/JSON/Parquet
+if ! _installed duckdb; then
+  t=$(date +%s)
+  echo "Installing duckdb..."
+  DUCKDB_VERSION="1.1.3"
+  curl -fsSL "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/duckdb_cli-linux-amd64.zip" \
+    -o /tmp/duckdb.zip \
+    && unzip -qo /tmp/duckdb.zip -d /usr/local/bin \
+    && chmod +x /usr/local/bin/duckdb \
+    && rm -f /tmp/duckdb.zip \
+    || echo "  Warning: duckdb installation failed (non-fatal)"
+  _timer "duckdb" "$t"
+fi
+
+# yq — YAML/JSON/XML processor (Mike Farah's Go version)
+if ! _installed yq; then
+  t=$(date +%s)
+  echo "Installing yq..."
+  YQ_VERSION="4.44.3"
+  curl -fsSL "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64" \
+    -o /usr/local/bin/yq \
+    && chmod +x /usr/local/bin/yq \
+    || echo "  Warning: yq installation failed (non-fatal)"
+  _timer "yq" "$t"
+fi
 
 # ── Browser dependencies ────────────────────────────────────────────────────
 t=$(date +%s)
@@ -67,26 +109,6 @@ for p in /opt/node22/bin/chromedriver /opt/node20/bin/chromedriver; do
   [ -f "$p" ] && [ ! -f "${p}.orig" ] && mv "$p" "${p}.orig"
 done
 _timer "Chromium" "$t"
-
-# ── gh CLI ───────────────────────────────────────────────────────────────────
-if ! _installed gh; then
-  t=$(date +%s)
-  echo "Installing gh CLI..."
-  GH_VERSION="2.74.1"
-  curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.deb" \
-    -o /tmp/gh.deb && dpkg -i /tmp/gh.deb && rm -f /tmp/gh.deb \
-    || apt-get install -y -qq gh 2>/dev/null \
-    || echo "  Warning: gh CLI installation failed (non-fatal)"
-  _timer "gh CLI" "$t"
-fi
-
-# ── SQLite ───────────────────────────────────────────────────────────────────
-if ! _installed sqlite3; then
-  t=$(date +%s)
-  apt-get update -qq
-  apt-get install -y -qq --no-install-recommends sqlite3 libsqlite3-dev 2>/dev/null || true
-  _timer "SQLite" "$t"
-fi
 
 # ── PostgreSQL client ────────────────────────────────────────────────────────
 if ! _installed psql; then
@@ -258,6 +280,8 @@ printf "%-10s %s\n" "Zig:" "$(zig version 2>/dev/null || echo 'not found')"
 printf "%-10s %s\n" "dotnet:" "$(dotnet --version 2>/dev/null || echo 'not found')"
 printf "%-10s %s\n" "PHP:" "$(php --version | head -1 2>/dev/null || echo 'not found')"
 printf "%-10s %s\n" "gh:" "$(gh --version | head -1 2>/dev/null || echo 'not found')"
+printf "%-10s %s\n" "duckdb:" "$(duckdb --version 2>/dev/null || echo 'not found')"
+printf "%-10s %s\n" "yq:" "$(yq --version 2>/dev/null || echo 'not found')"
 printf "%-10s %s\n" "sqlite3:" "$(sqlite3 --version 2>/dev/null || echo 'not found')"
 printf "%-10s %s\n" "psql:" "$(psql --version 2>/dev/null || echo 'not found')"
 printf "%-10s %s\n" "redis-cli:" "$(redis-cli --version 2>/dev/null || echo 'not found')"

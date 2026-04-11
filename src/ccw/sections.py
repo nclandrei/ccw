@@ -37,6 +37,9 @@ apt-get update -qq
 apt-get install -y -qq --no-install-recommends \\
   jq curl wget httpie build-essential \\
   tree htop ripgrep fd-find bat \\
+  shellcheck shfmt pandoc git-lfs \\
+  unzip zip rsync make \\
+  sqlite3 libsqlite3-dev \\
   2>/dev/null || true
 
 apt-get clean
@@ -91,9 +94,14 @@ _timer "Chromium" "$t"
 """
 
 
-def setup_gh() -> str:
+def setup_clitools() -> str:
+    """Always-on CLI tools that ship as GitHub-release binaries (not in apt).
+
+    Covers gh, duckdb, and yq — small, universally useful, no reason to gate.
+    """
     return """\
-# ── gh CLI ───────────────────────────────────────────────────────────────────
+# ── CLI tools (GitHub-release binaries) ─────────────────────────────────────
+# gh — GitHub CLI
 if ! _installed gh; then
   t=$(date +%s)
   echo "Installing gh CLI..."
@@ -103,6 +111,32 @@ if ! _installed gh; then
     || apt-get install -y -qq gh 2>/dev/null \\
     || echo "  Warning: gh CLI installation failed (non-fatal)"
   _timer "gh CLI" "$t"
+fi
+
+# duckdb — analytical SQL over CSV/JSON/Parquet
+if ! _installed duckdb; then
+  t=$(date +%s)
+  echo "Installing duckdb..."
+  DUCKDB_VERSION="1.1.3"
+  curl -fsSL "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/duckdb_cli-linux-amd64.zip" \\
+    -o /tmp/duckdb.zip \\
+    && unzip -qo /tmp/duckdb.zip -d /usr/local/bin \\
+    && chmod +x /usr/local/bin/duckdb \\
+    && rm -f /tmp/duckdb.zip \\
+    || echo "  Warning: duckdb installation failed (non-fatal)"
+  _timer "duckdb" "$t"
+fi
+
+# yq — YAML/JSON/XML processor (Mike Farah's Go version)
+if ! _installed yq; then
+  t=$(date +%s)
+  echo "Installing yq..."
+  YQ_VERSION="4.44.3"
+  curl -fsSL "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64" \\
+    -o /usr/local/bin/yq \\
+    && chmod +x /usr/local/bin/yq \\
+    || echo "  Warning: yq installation failed (non-fatal)"
+  _timer "yq" "$t"
 fi
 """
 
@@ -220,18 +254,6 @@ if ! _installed php; then
     curl -fsSL https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer 2>/dev/null || true
   fi
   _timer "PHP" "$t"
-fi
-"""
-
-
-def setup_sqlite() -> str:
-    return """\
-# ── SQLite ───────────────────────────────────────────────────────────────────
-if ! _installed sqlite3; then
-  t=$(date +%s)
-  apt-get update -qq
-  apt-get install -y -qq --no-install-recommends sqlite3 libsqlite3-dev 2>/dev/null || true
-  _timer "SQLite" "$t"
 fi
 """
 
@@ -407,10 +429,12 @@ def setup_summary(toolchains: set[str], extras: set[str]) -> str:
         checks.append(("dotnet", "dotnet --version"))
     if "php" in toolchains:
         checks.append(("PHP", "php --version | head -1"))
-    if "gh" in extras:
-        checks.append(("gh", "gh --version | head -1"))
-    if "sqlite" in extras:
-        checks.append(("sqlite3", "sqlite3 --version"))
+    # Always-on CLI tools
+    checks.append(("gh", "gh --version | head -1"))
+    checks.append(("duckdb", "duckdb --version"))
+    checks.append(("yq", "yq --version"))
+    checks.append(("sqlite3", "sqlite3 --version"))
+
     if "postgres" in extras:
         checks.append(("psql", "psql --version"))
     if "redis" in extras:
@@ -431,15 +455,11 @@ def setup_summary(toolchains: set[str], extras: set[str]) -> str:
 
 def build_setup_sh(toolchains: set[str], extras: set[str]) -> str:
     """Assemble setup.sh from selected sections."""
-    parts = [setup_header(), setup_system_packages()]
+    parts = [setup_header(), setup_system_packages(), setup_clitools()]
 
     if "browser" in extras:
         parts.append(setup_browser_deps())
         parts.append(setup_chromium())
-    if "gh" in extras:
-        parts.append(setup_gh())
-    if "sqlite" in extras:
-        parts.append(setup_sqlite())
     if "postgres" in extras:
         parts.append(setup_postgres())
     if "redis" in extras:
@@ -792,12 +812,20 @@ def build_diagnose_sh(toolchains: set[str], extras: set[str], skills_dir: str = 
             '_check Composer composer',
         ])
 
-    lines.extend(['', 'echo ""', 'echo "CLI Tools"', '_check git'])
-    if "gh" in extras:
-        lines.append('_check gh')
-    lines.extend(['_check jq', '_check curl'])
-    if "sqlite" in extras:
-        lines.append('_check sqlite3')
+    lines.extend([
+        '',
+        'echo ""',
+        'echo "CLI Tools"',
+        '_check git',
+        '_check gh',
+        '_check jq',
+        '_check yq',
+        '_check curl',
+        '_check duckdb',
+        '_check sqlite3',
+        '_check pandoc',
+        '_check shellcheck',
+    ])
     if "postgres" in extras:
         lines.append('_check psql')
     if "redis" in extras:
@@ -863,4 +891,4 @@ def build_diagnose_sh(toolchains: set[str], extras: set[str], skills_dir: str = 
 # ── Public constants ─────────────────────────────────────────────────────────
 
 ALL_TOOLCHAINS = {"node", "python", "go", "rust", "ruby", "java", "deno", "elixir", "zig", "dotnet", "php"}
-ALL_EXTRAS = {"gh", "uv", "pnpm", "yarn", "bun", "browser", "sqlite", "postgres", "redis", "docker"}
+ALL_EXTRAS = {"uv", "pnpm", "yarn", "bun", "browser", "postgres", "redis", "docker"}
