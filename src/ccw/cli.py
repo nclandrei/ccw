@@ -13,6 +13,7 @@ from . import __version__
 from .sections import (
     ALL_EXTRAS,
     ALL_TOOLCHAINS,
+    DEFAULT_VERSIONS,
     build_diagnose_sh,
     build_session_start_sh,
     build_setup_sh,
@@ -34,6 +35,44 @@ def _parse_set(value: str, valid: set[str], label: str) -> set[str]:
     return items
 
 
+def _parse_versions(value: str) -> dict[str, str]:
+    """Parse 'go=1.23.0,zig=0.14.0' into a dict. Empty string → {}."""
+    if not value.strip():
+        return {}
+    out: dict[str, str] = {}
+    for pair in value.split(","):
+        pair = pair.strip()
+        if not pair:
+            continue
+        if "=" not in pair:
+            print(f"Error: --versions entry must be KEY=VALUE, got: {pair}", file=sys.stderr)
+            sys.exit(1)
+        key, _, val = pair.partition("=")
+        key = key.strip().lower()
+        val = val.strip()
+        if key not in DEFAULT_VERSIONS:
+            print(f"Error: unknown version key: {key}", file=sys.stderr)
+            print(f"Valid keys: {', '.join(sorted(DEFAULT_VERSIONS))}", file=sys.stderr)
+            sys.exit(1)
+        if not val:
+            print(f"Error: empty version value for {key}", file=sys.stderr)
+            sys.exit(1)
+        out[key] = val
+    return out
+
+
+def _resolve_env_file(explicit: str | None, project_root: Path) -> str:
+    """Resolve --env-file. Empty string disables. None auto-detects .env.example/.env.template."""
+    if explicit == "":
+        return ""
+    if explicit is not None:
+        return explicit
+    for candidate in (".env.example", ".env.template"):
+        if (project_root / candidate).exists():
+            return candidate
+    return ""
+
+
 def _write_script(path: Path, content: str, force: bool) -> bool:
     if path.exists() and not force:
         answer = input(f"  {path} already exists. Overwrite? [y/N] ").strip()
@@ -50,6 +89,7 @@ def _write_script(path: Path, content: str, force: bool) -> bool:
 def cmd_init(args: argparse.Namespace) -> None:
     toolchains = _parse_set(args.toolchains, ALL_TOOLCHAINS, "toolchains")
     extras = _parse_set(args.extras, ALL_EXTRAS, "extras")
+    versions = _parse_versions(args.versions)
     scripts_dir = args.scripts_dir
     skills_dir = (args.skills).strip().strip("/")
     force = args.force
@@ -64,6 +104,7 @@ def cmd_init(args: argparse.Namespace) -> None:
 
     project_root = Path.cwd()
     scripts_path = project_root / scripts_dir
+    env_file = _resolve_env_file(args.env_file, project_root)
 
     print(f"Project root: {project_root}")
     tc_str = ", ".join(sorted(toolchains)) if toolchains != ALL_TOOLCHAINS else "all"
@@ -72,22 +113,27 @@ def cmd_init(args: argparse.Namespace) -> None:
     print(f"Extras:       {ex_str}")
     if skills_dir:
         print(f"Skills dir:   {skills_dir}")
+    if env_file:
+        print(f"Env file:     {env_file}")
+    if versions:
+        pins = ", ".join(f"{k}={v}" for k, v in sorted(versions.items()))
+        print(f"Versions:     {pins}")
     print()
 
     # Generate scripts
     _write_script(
         scripts_path / "setup.sh",
-        build_setup_sh(toolchains, extras),
+        build_setup_sh(toolchains, extras, versions),
         force,
     )
     _write_script(
         scripts_path / "session-start.sh",
-        build_session_start_sh(toolchains, extras, scripts_dir, skills_dir),
+        build_session_start_sh(toolchains, extras, scripts_dir, skills_dir, env_file),
         force,
     )
     _write_script(
         scripts_path / "diagnose.sh",
-        build_diagnose_sh(toolchains, extras, skills_dir),
+        build_diagnose_sh(toolchains, extras, skills_dir, env_file),
         force,
     )
 
@@ -116,28 +162,20 @@ def cmd_doctor(args: argparse.Namespace) -> None:
         if candidate.exists():
             os.execvp("bash", ["bash", str(candidate)])
 
-    # No diagnose.sh found — run inline diagnostics
-    print("No diagnose.sh found. Running basic checks...")
+    # No diagnose.sh on disk — build the full diagnostic in-memory against
+    # the superset of toolchains/extras and run it. Same output quality
+    # whether `init` has been run or not.
+    import tempfile
+
+    project_root = Path.cwd()
+    env_file = _resolve_env_file(None, project_root)
+    script = build_diagnose_sh(ALL_TOOLCHAINS, ALL_EXTRAS, "", env_file)
+    with tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False) as tmp:
+        tmp.write(script)
+        tmp_path = tmp.name
+    print("No diagnose.sh found — running full diagnostics against all toolchains/extras.")
     print()
-
-    checks = [
-        ("CLAUDE_CODE_REMOTE", os.environ.get("CLAUDE_CODE_REMOTE", "")),
-        ("CLAUDE_ENV_FILE", os.environ.get("CLAUDE_ENV_FILE", "")),
-    ]
-    for name, val in checks:
-        status = "set" if val else "not set"
-        print(f"  {name}: {status}")
-
-    import shutil
-
-    tools = ["node", "python3", "go", "rustc", "ruby", "gh", "jq", "curl"]
-    print()
-    for tool in tools:
-        path = shutil.which(tool)
-        if path:
-            print(f"  ok  {tool}: {path}")
-        else:
-            print(f"  --  {tool}: not found")
+    os.execvp("bash", ["bash", tmp_path])
 
 
 HELP_TEXT = textwrap.dedent("""\
@@ -165,8 +203,21 @@ Commands:
                                SKILL.md is symlinked into ~/.claude/skills/
                                at session start (default: .claude/skills).
                                Pass --skills "" to disable.
+  ccweb init --versions PINS   Pin tool versions, e.g. go=1.23.0,zig=0.14.0.
+                               Valid keys: go, zig, gh, duckdb, yq,
+                               dotnet_channel. Unspecified tools use defaults.
+  ccweb init --env-file PATH   Repo-relative path to an env schema file
+                               (default: auto-detect .env.example or
+                               .env.template). session-start.sh warns when
+                               any declared var is unset; diagnose.sh shows
+                               set/missing per var. Only variable NAMES are
+                               read — ccweb never stores or transmits values.
+                               Pass --env-file "" to disable auto-detection.
   ccweb init --force           Overwrite existing files without prompting
-  ccweb doctor                 Run diagnostics on the current environment
+  ccweb doctor                 Run diagnostics on the current environment.
+                               Uses scripts/diagnose.sh if present, otherwise
+                               builds a full diagnostic in-memory against all
+                               toolchains and extras.
 
 What ccweb init generates:
   scripts/setup.sh             Runs as root on first session. Installs system
@@ -238,6 +289,25 @@ Skills (--skills DIR, default: .claude/skills):
   Pass --skills "" to disable skill wiring entirely.
   Example: --skills ai/skills         (custom path)
 
+Environment variables (--env-file PATH):
+  If the repo contains a .env.example or .env.template file (or --env-file
+  points somewhere else), session-start.sh reads the variable NAMES from it
+  and warns when any are unset in the running session. The file is a schema,
+  not a secret store — ccweb never reads, copies, or transmits values.
+  Secrets should live in the claude.ai/code Environment Variables UI at the
+  project level. diagnose.sh gets a matching section that shows each declared
+  variable as set or missing.
+
+Version pinning (--versions KEY=VALUE,...):
+  By default ccweb uses known-good versions for Go, Zig, gh, duckdb, yq, and
+  the .NET channel. Override any subset with --versions:
+
+    --versions go=1.23.0
+    --versions go=1.23.0,zig=0.14.0,gh=2.74.1
+    --versions dotnet_channel=LTS
+
+  Valid keys: go, zig, gh, duckdb, yq, dotnet_channel.
+
 How it works at runtime:
   1. User opens a Claude Code web session on a repo that has ccweb scripts.
   2. Claude Code runs session-start.sh via the SessionStart hook.
@@ -290,6 +360,12 @@ Examples:
   # Wire user-level skills from a repo directory
   uvx ccweb init --skills .claude/skills
 
+  # Pin Go and Zig versions
+  uvx ccweb init --versions go=1.23.0,zig=0.14.0
+
+  # Declare required env vars via a schema file (auto-detected by default)
+  uvx ccweb init --env-file .env.example
+
   # Overwrite existing scripts after upgrading ccweb
   uvx ccweb init --force
 
@@ -321,6 +397,8 @@ def main() -> None:
     init_p.add_argument("--extras", default="all")
     init_p.add_argument("--scripts-dir", default="scripts")
     init_p.add_argument("--skills", default=".claude/skills")
+    init_p.add_argument("--versions", default="")
+    init_p.add_argument("--env-file", dest="env_file", default=None)
     init_p.add_argument("--force", action="store_true")
     init_p.add_argument("-h", "--help", action="store_true")
 

@@ -194,7 +194,7 @@ fi
 # ── .NET ─────────────────────────────────────────────────────────────────────
 if ! _installed dotnet; then
   t=$(date +%s)
-  echo "Installing .NET SDK..."
+  echo "Installing .NET SDK (channel STS)..."
   # Use the official install script — works on all Ubuntu versions reliably
   curl -fsSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel STS 2>/dev/null || true
   [ -f /root/.dotnet/dotnet ] && ln -sf /root/.dotnet/dotnet /usr/local/bin/dotnet

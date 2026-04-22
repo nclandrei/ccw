@@ -2,6 +2,22 @@
 
 from __future__ import annotations
 
+# ── Default tool versions (overridable via --versions) ───────────────────────
+# Keys here are the only valid --versions flag names.
+DEFAULT_VERSIONS: dict[str, str] = {
+    "go": "1.24.7",
+    "zig": "0.15.2",
+    "gh": "2.74.1",
+    "duckdb": "1.1.3",
+    "yq": "4.44.3",
+    "dotnet_channel": "STS",
+}
+
+
+def _v(versions: dict[str, str], key: str) -> str:
+    return versions.get(key, DEFAULT_VERSIONS[key])
+
+
 # ── setup.sh sections ────────────────────────────────────────────────────────
 
 
@@ -94,19 +110,22 @@ _timer "Chromium" "$t"
 """
 
 
-def setup_clitools() -> str:
+def setup_clitools(versions: dict[str, str]) -> str:
     """Always-on CLI tools that ship as GitHub-release binaries (not in apt).
 
     Covers gh, duckdb, and yq — small, universally useful, no reason to gate.
     """
-    return """\
+    gh_version = _v(versions, "gh")
+    duckdb_version = _v(versions, "duckdb")
+    yq_version = _v(versions, "yq")
+    return f"""\
 # ── CLI tools (GitHub-release binaries) ─────────────────────────────────────
 # gh — GitHub CLI
 if ! _installed gh; then
   t=$(date +%s)
   echo "Installing gh CLI..."
-  GH_VERSION="2.74.1"
-  curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.deb" \\
+  GH_VERSION="{gh_version}"
+  curl -fsSL "https://github.com/cli/cli/releases/download/v${{GH_VERSION}}/gh_${{GH_VERSION}}_linux_amd64.deb" \\
     -o /tmp/gh.deb && dpkg -i /tmp/gh.deb && rm -f /tmp/gh.deb \\
     || apt-get install -y -qq gh 2>/dev/null \\
     || echo "  Warning: gh CLI installation failed (non-fatal)"
@@ -117,8 +136,8 @@ fi
 if ! _installed duckdb; then
   t=$(date +%s)
   echo "Installing duckdb..."
-  DUCKDB_VERSION="1.1.3"
-  curl -fsSL "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/duckdb_cli-linux-amd64.zip" \\
+  DUCKDB_VERSION="{duckdb_version}"
+  curl -fsSL "https://github.com/duckdb/duckdb/releases/download/v${{DUCKDB_VERSION}}/duckdb_cli-linux-amd64.zip" \\
     -o /tmp/duckdb.zip \\
     && unzip -qo /tmp/duckdb.zip -d /usr/local/bin \\
     && chmod +x /usr/local/bin/duckdb \\
@@ -131,8 +150,8 @@ fi
 if ! _installed yq; then
   t=$(date +%s)
   echo "Installing yq..."
-  YQ_VERSION="4.44.3"
-  curl -fsSL "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64" \\
+  YQ_VERSION="{yq_version}"
+  curl -fsSL "https://github.com/mikefarah/yq/releases/download/v${{YQ_VERSION}}/yq_linux_amd64" \\
     -o /usr/local/bin/yq \\
     && chmod +x /usr/local/bin/yq \\
     || echo "  Warning: yq installation failed (non-fatal)"
@@ -141,18 +160,19 @@ fi
 """
 
 
-def setup_go() -> str:
-    return """\
+def setup_go(versions: dict[str, str]) -> str:
+    go_version = _v(versions, "go")
+    return f"""\
 # ── Go ───────────────────────────────────────────────────────────────────────
 if ! _installed go; then
   t=$(date +%s)
-  GO_VERSION="1.24.7"
-  echo "Installing Go ${GO_VERSION}..."
-  curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" \\
+  GO_VERSION="{go_version}"
+  echo "Installing Go ${{GO_VERSION}}..."
+  curl -fsSL "https://go.dev/dl/go${{GO_VERSION}}.linux-amd64.tar.gz" \\
     | tar -C /usr/local -xzf -
   ln -sf /usr/local/go/bin/go   /usr/local/bin/go
   ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
-  _timer "Go ${GO_VERSION}" "$t"
+  _timer "Go ${{GO_VERSION}}" "$t"
 fi
 """
 
@@ -210,29 +230,31 @@ fi
 """
 
 
-def setup_zig() -> str:
-    return """\
+def setup_zig(versions: dict[str, str]) -> str:
+    zig_version = _v(versions, "zig")
+    return f"""\
 # ── Zig ──────────────────────────────────────────────────────────────────────
 if ! _installed zig; then
   t=$(date +%s)
-  ZIG_VERSION="0.15.2"
-  echo "Installing Zig ${ZIG_VERSION}..."
-  curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz" \\
+  ZIG_VERSION="{zig_version}"
+  echo "Installing Zig ${{ZIG_VERSION}}..."
+  curl -fsSL "https://ziglang.org/download/${{ZIG_VERSION}}/zig-x86_64-linux-${{ZIG_VERSION}}.tar.xz" \\
     | tar -C /usr/local -xJf -
-  ln -sf /usr/local/zig-x86_64-linux-${ZIG_VERSION}/zig /usr/local/bin/zig
-  _timer "Zig ${ZIG_VERSION}" "$t"
+  ln -sf /usr/local/zig-x86_64-linux-${{ZIG_VERSION}}/zig /usr/local/bin/zig
+  _timer "Zig ${{ZIG_VERSION}}" "$t"
 fi
 """
 
 
-def setup_dotnet() -> str:
-    return """\
+def setup_dotnet(versions: dict[str, str]) -> str:
+    channel = _v(versions, "dotnet_channel")
+    return f"""\
 # ── .NET ─────────────────────────────────────────────────────────────────────
 if ! _installed dotnet; then
   t=$(date +%s)
-  echo "Installing .NET SDK..."
+  echo "Installing .NET SDK (channel {channel})..."
   # Use the official install script — works on all Ubuntu versions reliably
-  curl -fsSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel STS 2>/dev/null || true
+  curl -fsSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel {channel} 2>/dev/null || true
   [ -f /root/.dotnet/dotnet ] && ln -sf /root/.dotnet/dotnet /usr/local/bin/dotnet
   _timer ".NET" "$t"
 fi
@@ -453,9 +475,14 @@ def setup_summary(toolchains: set[str], extras: set[str]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def build_setup_sh(toolchains: set[str], extras: set[str]) -> str:
+def build_setup_sh(
+    toolchains: set[str],
+    extras: set[str],
+    versions: dict[str, str] | None = None,
+) -> str:
     """Assemble setup.sh from selected sections."""
-    parts = [setup_header(), setup_system_packages(), setup_clitools()]
+    versions = versions or {}
+    parts = [setup_header(), setup_system_packages(), setup_clitools(versions)]
 
     if "browser" in extras:
         parts.append(setup_browser_deps())
@@ -467,7 +494,7 @@ def build_setup_sh(toolchains: set[str], extras: set[str]) -> str:
     if "docker" in extras:
         parts.append(setup_docker())
     if "go" in toolchains:
-        parts.append(setup_go())
+        parts.append(setup_go(versions))
     if "rust" in toolchains:
         parts.append(setup_rust())
     if "deno" in toolchains:
@@ -475,9 +502,9 @@ def build_setup_sh(toolchains: set[str], extras: set[str]) -> str:
     if "elixir" in toolchains:
         parts.append(setup_elixir())
     if "zig" in toolchains:
-        parts.append(setup_zig())
+        parts.append(setup_zig(versions))
     if "dotnet" in toolchains:
-        parts.append(setup_dotnet())
+        parts.append(setup_dotnet(versions))
     if "php" in toolchains:
         parts.append(setup_php())
     if "uv" in extras:
@@ -691,6 +718,37 @@ def session_deps(toolchains: set[str]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def session_env_check(env_file: str) -> str:
+    """Warn at session start when required env vars declared in env_file are unset.
+
+    Parses KEY=... lines at runtime (only names; values ignored) so editing
+    the env file never requires regenerating the script. ccweb never reads,
+    stores, or transmits values — secrets live in claude.ai's Environment UI.
+    """
+    return f"""\
+
+# ── Required env vars check ─────────────────────────────────────────────────
+# Parses KEY=... lines from the project's env-schema file (values ignored)
+# and warns when any declared variable is unset in the current session.
+ENV_FILE_PATH="{env_file}"
+ENV_FILE_FULL="${{CLAUDE_PROJECT_DIR:-$(pwd)}}/${{ENV_FILE_PATH}}"
+if [ -f "$ENV_FILE_FULL" ]; then
+  REQUIRED_VARS=$(grep -Ev '^[[:space:]]*(#|$)' "$ENV_FILE_FULL" \\
+                  | grep -oE '^[A-Z_][A-Z0-9_]*' | sort -u)
+  MISSING=()
+  for v in $REQUIRED_VARS; do
+    [ -z "${{!v:-}}" ] && MISSING+=("$v")
+  done
+  if [ ${{#MISSING[@]}} -gt 0 ]; then
+    echo ""
+    echo "Warning: required env vars not set: ${{MISSING[*]}}"
+    echo "  Declared in: ${{ENV_FILE_PATH}}"
+    echo "  Set them at claude.ai/code -> Project -> Environment Variables"
+  fi
+fi
+"""
+
+
 def session_skills(skills_dir: str) -> str:
     """Generate logic that symlinks repo skills into ~/.claude/skills/."""
     return f"""\
@@ -715,7 +773,11 @@ fi
 
 
 def build_session_start_sh(
-    toolchains: set[str], extras: set[str], scripts_dir: str, skills_dir: str = ""
+    toolchains: set[str],
+    extras: set[str],
+    scripts_dir: str,
+    skills_dir: str = "",
+    env_file: str = "",
 ) -> str:
     """Assemble session-start.sh from selected sections."""
     parts = [
@@ -725,6 +787,8 @@ def build_session_start_sh(
     ]
     if skills_dir:
         parts.append(session_skills(skills_dir))
+    if env_file:
+        parts.append(session_env_check(env_file))
     parts.append(session_deps(toolchains))
     return "\n".join(parts)
 
@@ -732,7 +796,12 @@ def build_session_start_sh(
 # ── diagnose.sh ──────────────────────────────────────────────────────────────
 
 
-def build_diagnose_sh(toolchains: set[str], extras: set[str], skills_dir: str = "") -> str:
+def build_diagnose_sh(
+    toolchains: set[str],
+    extras: set[str],
+    skills_dir: str = "",
+    env_file: str = "",
+) -> str:
     """Generate diagnose.sh for the selected toolchains/extras."""
     lines = [
         '#!/bin/bash',
@@ -865,6 +934,23 @@ def build_diagnose_sh(toolchains: set[str], extras: set[str], skills_dir: str = 
             '    elif [ -e "${SKILLS_DST}/${name}" ]; then warn "${name}: exists but not a symlink"',
             '    else fail "${name}: not wired"; fi',
             '  done',
+            'fi',
+        ])
+
+    if env_file:
+        lines.extend([
+            '',
+            'echo ""',
+            'echo "Required Env Vars"',
+            f'ENV_FILE_PATH="{env_file}"',
+            'ENV_FILE_FULL="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/${ENV_FILE_PATH}"',
+            'if [ -f "$ENV_FILE_FULL" ]; then',
+            '  REQUIRED_VARS=$(grep -Ev \'^[[:space:]]*(#|$)\' "$ENV_FILE_FULL" | grep -oE \'^[A-Z_][A-Z0-9_]*\' | sort -u)',
+            '  for v in $REQUIRED_VARS; do',
+            '    if [ -n "${!v:-}" ]; then ok "$v: set"; else fail "$v: not set"; fi',
+            '  done',
+            'else',
+            '  warn "env file not found: $ENV_FILE_PATH"',
             'fi',
         ])
 

@@ -61,7 +61,3 @@ Manual PyPI fallback (if the Action fails or for pre-release):
 ```bash
 uv publish --token "$PYPI_API_TOKEN" dist/ccweb-X.Y.Z*
 ```
-
-## README note
-
-The README still references the web configurator at ccweb.nicolaeandrei.com — that site has been removed. The README should be updated to remove that section.
