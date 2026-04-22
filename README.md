@@ -27,12 +27,15 @@ uvx ccweb doctor
 ## Options
 
 ```
-uvx ccweb init --toolchains node,python       # Just Node + Python
-uvx ccweb init --toolchains go --extras gh    # Go with gh CLI
-uvx ccweb init --force                        # Overwrite existing files
-uvx ccweb init --scripts-dir ci/scripts       # Custom scripts directory
-uvx ccweb init --skills ai/skills             # Custom skills directory
-uvx ccweb init --skills ""                    # Disable skills wiring
+uvx ccweb init --toolchains node,python           # Just Node + Python
+uvx ccweb init --toolchains go --extras postgres  # Go + psql
+uvx ccweb init --versions go=1.23.0,zig=0.14.0    # Pin tool versions
+uvx ccweb init --env-file .env.example            # Declare required env vars
+uvx ccweb init --env-file ""                      # Disable env-file auto-detect
+uvx ccweb init --force                            # Overwrite existing files
+uvx ccweb init --scripts-dir ci/scripts           # Custom scripts directory
+uvx ccweb init --skills ai/skills                 # Custom skills directory
+uvx ccweb init --skills ""                        # Disable skills wiring
 ```
 
 ### Toolchains
@@ -41,7 +44,35 @@ uvx ccweb init --skills ""                    # Disable skills wiring
 
 ### Extras
 
-`gh`, `uv`, `pnpm`, `yarn`, `bun`, `browser`, `sqlite`, `postgres`, `redis`, `docker` — default: all
+`uv`, `pnpm`, `yarn`, `bun`, `browser`, `postgres`, `redis`, `docker` — default: all
+
+`gh`, `duckdb`, `yq`, `sqlite3`, `jq`, `pandoc`, `shellcheck`, and friends are always installed — no flag needed.
+
+### Version pinning
+
+Override any of the baked-in versions with `--versions KEY=VALUE` (comma-separated for multiple). Unspecified tools use the defaults in `DEFAULT_VERSIONS`.
+
+Valid keys: `go`, `zig`, `gh`, `duckdb`, `yq`, `dotnet_channel`.
+
+```
+uvx ccweb init --versions go=1.23.0
+uvx ccweb init --versions go=1.23.0,gh=2.74.1,dotnet_channel=LTS
+```
+
+### Environment variables
+
+If the repo contains `.env.example` or `.env.template` (or you point `--env-file` somewhere else), `session-start.sh` reads the variable **names** from it and warns when any are unset in the session. `diagnose.sh` gets a matching section that shows each declared variable as set or missing.
+
+The file is treated as a schema — ccweb never reads, copies, or transmits the values. Store actual secrets in the claude.ai/code Environment Variables UI at the project level.
+
+```
+# .env.example (checked into the repo; values are placeholders)
+DATABASE_URL=
+OPENAI_API_KEY=
+STRIPE_SECRET=
+```
+
+Pass `--env-file ""` to disable auto-detection.
 
 ### Skills
 
