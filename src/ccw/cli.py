@@ -214,7 +214,7 @@ Commands:
                                (package.json, go.mod, Cargo.toml, etc.) and
                                install only what the repo actually uses.
   ccweb init --extras EX       Comma-separated: uv,pnpm,yarn,bun,browser,
-                               postgres,redis,docker (default: all).
+                               postgres,redis,docker,cloud (default: all).
                                Use 'auto' to detect from lockfiles and other
                                markers (pnpm-lock.yaml, Dockerfile, uv.lock,
                                playwright in package.json, postgres/redis in
@@ -227,7 +227,8 @@ Commands:
                                Pass --skills "" to disable.
   ccweb init --versions PINS   Pin tool versions, e.g. go=1.23.0,zig=0.14.0.
                                Valid keys: go, zig, gh, duckdb, yq,
-                               dotnet_channel. Unspecified tools use defaults.
+                               dotnet_channel, terraform, kubectl.
+                               Unspecified tools use defaults.
   ccweb init --env-file PATH   Repo-relative path to an env schema file
                                (default: auto-detect .env.example or
                                .env.template). session-start.sh warns when
@@ -295,6 +296,10 @@ Extras (what each installs):
   docker     Installs Docker CLI. Note: the Docker daemon is not available on
              the VM, but the CLI is useful for docker compose files and remote
              Docker hosts.
+  cloud      Installs the common cloud/infra CLIs: aws (AWS CLI v2), gcloud
+             (Google Cloud SDK), terraform, kubectl, and helm. Authentication
+             still relies on env vars / credentials set via the claude.ai
+             Environment Variables UI; ccweb does not manage credentials.
 
 Skills (--skills DIR, default: .claude/skills):
   Claude Code auto-discovers skills from ~/.claude/skills/<name>/SKILL.md.
@@ -321,14 +326,15 @@ Environment variables (--env-file PATH):
   variable as set or missing.
 
 Version pinning (--versions KEY=VALUE,...):
-  By default ccweb uses known-good versions for Go, Zig, gh, duckdb, yq, and
-  the .NET channel. Override any subset with --versions:
+  By default ccweb uses known-good versions for Go, Zig, gh, duckdb, yq, the
+  .NET channel, terraform, and kubectl. Override any subset with --versions:
 
     --versions go=1.23.0
     --versions go=1.23.0,zig=0.14.0,gh=2.74.1
     --versions dotnet_channel=LTS
+    --versions terraform=1.9.8,kubectl=1.31.2
 
-  Valid keys: go, zig, gh, duckdb, yq, dotnet_channel.
+  Valid keys: go, zig, gh, duckdb, yq, dotnet_channel, terraform, kubectl.
 
 How it works at runtime:
   1. User opens a Claude Code web session on a repo that has ccweb scripts.
@@ -378,6 +384,9 @@ Examples:
 
   # Go backend with database tools
   uvx ccweb init --toolchains go --extras postgres,redis
+
+  # Infra/DevOps workflow — cloud CLIs only (aws, gcloud, terraform, kubectl, helm)
+  uvx ccweb init --toolchains "" --extras cloud
 
   # Rust project, no opt-in extras (always-on CLI tools still included)
   uvx ccweb init --toolchains rust --extras ""

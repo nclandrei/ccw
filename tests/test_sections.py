@@ -28,7 +28,7 @@ class AllExtrasTests(unittest.TestCase):
 
     def test_remaining_extras_are_stack_specific(self):
         # These still have a legitimate opt-out reason
-        for extra in ("browser", "docker", "postgres", "redis", "uv", "pnpm", "yarn", "bun"):
+        for extra in ("browser", "docker", "postgres", "redis", "uv", "pnpm", "yarn", "bun", "cloud"):
             self.assertIn(extra, ALL_EXTRAS)
 
 
@@ -85,6 +85,70 @@ class DiagnoseAlwaysOnChecksTests(unittest.TestCase):
     def test_always_on_tools_checked(self):
         for tool in ("jq", "curl", "gh", "duckdb", "yq", "shellcheck", "sqlite3", "pandoc"):
             self.assertIn(tool, self.diagnose_sh, f"diagnose.sh should check {tool}")
+
+
+class CloudExtraTests(unittest.TestCase):
+    """The 'cloud' extra ships aws, gcloud, terraform, kubectl, and helm."""
+
+    def test_cloud_in_all_extras(self):
+        self.assertIn("cloud", ALL_EXTRAS)
+
+    def test_cloud_not_installed_without_extra(self):
+        setup_sh = build_setup_sh(set(), set())
+        # Each of these URLs is unique to its respective cloud tool installer
+        for signature in (
+            "awscli-exe-linux",
+            "packages.cloud.google.com",
+            "releases.hashicorp.com/terraform",
+            "dl.k8s.io/release",
+            "get.helm.sh",
+        ):
+            self.assertNotIn(signature, setup_sh)
+
+    def test_cloud_installs_aws_cli(self):
+        setup_sh = build_setup_sh(set(), {"cloud"})
+        self.assertIn("awscli-exe-linux", setup_sh)
+        self.assertIn("_installed aws", setup_sh)
+
+    def test_cloud_installs_gcloud(self):
+        setup_sh = build_setup_sh(set(), {"cloud"})
+        self.assertIn("packages.cloud.google.com", setup_sh)
+        self.assertIn("google-cloud-cli", setup_sh)
+
+    def test_cloud_installs_terraform(self):
+        setup_sh = build_setup_sh(set(), {"cloud"})
+        self.assertIn("releases.hashicorp.com/terraform", setup_sh)
+        self.assertIn("_installed terraform", setup_sh)
+
+    def test_cloud_installs_kubectl(self):
+        setup_sh = build_setup_sh(set(), {"cloud"})
+        self.assertIn("dl.k8s.io/release", setup_sh)
+        self.assertIn("_installed kubectl", setup_sh)
+
+    def test_cloud_installs_helm(self):
+        setup_sh = build_setup_sh(set(), {"cloud"})
+        self.assertIn("get.helm.sh", setup_sh)
+        self.assertIn("_installed helm", setup_sh)
+
+    def test_summary_lists_cloud_tools_when_enabled(self):
+        setup_sh = build_setup_sh(set(), {"cloud"})
+        for label in ("aws:", "gcloud:", "terraform:", "kubectl:", "helm:"):
+            self.assertIn(label, setup_sh)
+
+    def test_summary_omits_cloud_tools_when_disabled(self):
+        setup_sh = build_setup_sh(set(), set())
+        for label in ("aws:", "gcloud:", "terraform:", "kubectl:", "helm:"):
+            self.assertNotIn(label, setup_sh)
+
+    def test_diagnose_checks_cloud_tools_when_enabled(self):
+        diagnose_sh = build_diagnose_sh(set(), {"cloud"})
+        for tool in ("aws", "gcloud", "terraform", "kubectl", "helm"):
+            self.assertIn(f"_check {tool}", diagnose_sh, f"diagnose.sh missing check for {tool}")
+
+    def test_diagnose_skips_cloud_tools_when_disabled(self):
+        diagnose_sh = build_diagnose_sh(set(), set())
+        for tool in ("terraform", "kubectl", "helm"):
+            self.assertNotIn(f"_check {tool}", diagnose_sh)
 
 
 class FullBuildSmokeTest(unittest.TestCase):
