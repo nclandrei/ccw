@@ -11,6 +11,8 @@ DEFAULT_VERSIONS: dict[str, str] = {
     "duckdb": "1.1.3",
     "yq": "4.44.3",
     "dotnet_channel": "STS",
+    "terraform": "1.9.8",
+    "kubectl": "1.31.2",
 }
 
 
@@ -321,6 +323,80 @@ fi
 """
 
 
+def setup_cloud(versions: dict[str, str]) -> str:
+    """Cloud CLIs: aws, gcloud, terraform, kubectl, helm."""
+    tf_version = _v(versions, "terraform")
+    k8s_version = _v(versions, "kubectl")
+    return f"""\
+# ── Cloud CLIs (aws, gcloud, terraform, kubectl, helm) ───────────────────────
+# AWS CLI v2 — official bundle
+if ! _installed aws; then
+  t=$(date +%s)
+  echo "Installing AWS CLI v2..."
+  curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip \\
+    && unzip -qo /tmp/awscliv2.zip -d /tmp \\
+    && /tmp/aws/install --update \\
+    && rm -rf /tmp/aws /tmp/awscliv2.zip \\
+    || echo "  Warning: AWS CLI installation failed (non-fatal)"
+  _timer "AWS CLI" "$t"
+fi
+
+# Google Cloud SDK (gcloud) — via Google's apt repo
+if ! _installed gcloud; then
+  t=$(date +%s)
+  echo "Installing Google Cloud SDK..."
+  apt-get install -y -qq --no-install-recommends apt-transport-https ca-certificates gnupg 2>/dev/null || true
+  curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \\
+    | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg 2>/dev/null || true
+  echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \\
+    > /etc/apt/sources.list.d/google-cloud-sdk.list
+  apt-get update -qq
+  apt-get install -y -qq --no-install-recommends google-cloud-cli 2>/dev/null \\
+    || echo "  Warning: gcloud installation failed (non-fatal)"
+  _timer "gcloud" "$t"
+fi
+
+# Terraform — HashiCorp release binary
+if ! _installed terraform; then
+  t=$(date +%s)
+  TERRAFORM_VERSION="{tf_version}"
+  echo "Installing Terraform ${{TERRAFORM_VERSION}}..."
+  curl -fsSL "https://releases.hashicorp.com/terraform/${{TERRAFORM_VERSION}}/terraform_${{TERRAFORM_VERSION}}_linux_amd64.zip" \\
+    -o /tmp/terraform.zip \\
+    && unzip -qo /tmp/terraform.zip -d /usr/local/bin \\
+    && chmod +x /usr/local/bin/terraform \\
+    && rm -f /tmp/terraform.zip \\
+    || echo "  Warning: Terraform installation failed (non-fatal)"
+  _timer "Terraform" "$t"
+fi
+
+# kubectl — Kubernetes CLI
+if ! _installed kubectl; then
+  t=$(date +%s)
+  KUBECTL_VERSION="{k8s_version}"
+  echo "Installing kubectl ${{KUBECTL_VERSION}}..."
+  curl -fsSL "https://dl.k8s.io/release/v${{KUBECTL_VERSION}}/bin/linux/amd64/kubectl" \\
+    -o /usr/local/bin/kubectl \\
+    && chmod +x /usr/local/bin/kubectl \\
+    || echo "  Warning: kubectl installation failed (non-fatal)"
+  _timer "kubectl" "$t"
+fi
+
+# Helm — Kubernetes package manager
+if ! _installed helm; then
+  t=$(date +%s)
+  echo "Installing Helm..."
+  curl -fsSL https://get.helm.sh/helm-v3.16.2-linux-amd64.tar.gz -o /tmp/helm.tgz \\
+    && tar -xzf /tmp/helm.tgz -C /tmp \\
+    && mv /tmp/linux-amd64/helm /usr/local/bin/helm \\
+    && chmod +x /usr/local/bin/helm \\
+    && rm -rf /tmp/helm.tgz /tmp/linux-amd64 \\
+    || echo "  Warning: Helm installation failed (non-fatal)"
+  _timer "Helm" "$t"
+fi
+"""
+
+
 def setup_node_managers(extras: set[str]) -> str:
     parts = [
         '# ── Node.js package managers ────────────────────────────────────────────────',
@@ -463,6 +539,12 @@ def setup_summary(toolchains: set[str], extras: set[str]) -> str:
         checks.append(("redis-cli", "redis-cli --version"))
     if "docker" in extras:
         checks.append(("Docker", "docker --version"))
+    if "cloud" in extras:
+        checks.append(("aws", "aws --version"))
+        checks.append(("gcloud", "gcloud --version | head -1"))
+        checks.append(("terraform", "terraform version | head -1"))
+        checks.append(("kubectl", "kubectl version --client=true --output=yaml 2>/dev/null | head -2 | tail -1"))
+        checks.append(("helm", "helm version --short"))
 
     for label, cmd in checks:
         lines.append(
@@ -493,6 +575,8 @@ def build_setup_sh(
         parts.append(setup_redis())
     if "docker" in extras:
         parts.append(setup_docker())
+    if "cloud" in extras:
+        parts.append(setup_cloud(versions))
     if "go" in toolchains:
         parts.append(setup_go(versions))
     if "rust" in toolchains:
@@ -906,6 +990,17 @@ def build_diagnose_sh(
             '  docker ps &>/dev/null && ok "Docker daemon: running" || warn "Docker CLI installed but daemon not running"',
             'fi',
         ])
+    if "cloud" in extras:
+        lines.extend([
+            '',
+            'echo ""',
+            'echo "Cloud CLIs"',
+            '_check aws',
+            '_check gcloud',
+            '_check terraform',
+            '_check kubectl',
+            '_check helm',
+        ])
 
     if "browser" in extras:
         lines.extend([
@@ -977,4 +1072,4 @@ def build_diagnose_sh(
 # ── Public constants ─────────────────────────────────────────────────────────
 
 ALL_TOOLCHAINS = {"node", "python", "go", "rust", "ruby", "java", "deno", "elixir", "zig", "dotnet", "php"}
-ALL_EXTRAS = {"uv", "pnpm", "yarn", "bun", "browser", "postgres", "redis", "docker"}
+ALL_EXTRAS = {"uv", "pnpm", "yarn", "bun", "browser", "postgres", "redis", "docker", "cloud"}
