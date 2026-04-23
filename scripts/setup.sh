@@ -139,6 +139,73 @@ if ! _installed docker; then
   _timer "Docker CLI" "$t"
 fi
 
+# ── Cloud CLIs (aws, gcloud, terraform, kubectl, helm) ───────────────────────
+# AWS CLI v2 — official bundle
+if ! _installed aws; then
+  t=$(date +%s)
+  echo "Installing AWS CLI v2..."
+  curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip \
+    && unzip -qo /tmp/awscliv2.zip -d /tmp \
+    && /tmp/aws/install --update \
+    && rm -rf /tmp/aws /tmp/awscliv2.zip \
+    || echo "  Warning: AWS CLI installation failed (non-fatal)"
+  _timer "AWS CLI" "$t"
+fi
+
+# Google Cloud SDK (gcloud) — via Google's apt repo
+if ! _installed gcloud; then
+  t=$(date +%s)
+  echo "Installing Google Cloud SDK..."
+  apt-get install -y -qq --no-install-recommends apt-transport-https ca-certificates gnupg 2>/dev/null || true
+  curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+    | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg 2>/dev/null || true
+  echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
+    > /etc/apt/sources.list.d/google-cloud-sdk.list
+  apt-get update -qq
+  apt-get install -y -qq --no-install-recommends google-cloud-cli 2>/dev/null \
+    || echo "  Warning: gcloud installation failed (non-fatal)"
+  _timer "gcloud" "$t"
+fi
+
+# Terraform — HashiCorp release binary
+if ! _installed terraform; then
+  t=$(date +%s)
+  TERRAFORM_VERSION="1.9.8"
+  echo "Installing Terraform ${TERRAFORM_VERSION}..."
+  curl -fsSL "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip" \
+    -o /tmp/terraform.zip \
+    && unzip -qo /tmp/terraform.zip -d /usr/local/bin \
+    && chmod +x /usr/local/bin/terraform \
+    && rm -f /tmp/terraform.zip \
+    || echo "  Warning: Terraform installation failed (non-fatal)"
+  _timer "Terraform" "$t"
+fi
+
+# kubectl — Kubernetes CLI
+if ! _installed kubectl; then
+  t=$(date +%s)
+  KUBECTL_VERSION="1.31.2"
+  echo "Installing kubectl ${KUBECTL_VERSION}..."
+  curl -fsSL "https://dl.k8s.io/release/v${KUBECTL_VERSION}/bin/linux/amd64/kubectl" \
+    -o /usr/local/bin/kubectl \
+    && chmod +x /usr/local/bin/kubectl \
+    || echo "  Warning: kubectl installation failed (non-fatal)"
+  _timer "kubectl" "$t"
+fi
+
+# Helm — Kubernetes package manager
+if ! _installed helm; then
+  t=$(date +%s)
+  echo "Installing Helm..."
+  curl -fsSL https://get.helm.sh/helm-v3.16.2-linux-amd64.tar.gz -o /tmp/helm.tgz \
+    && tar -xzf /tmp/helm.tgz -C /tmp \
+    && mv /tmp/linux-amd64/helm /usr/local/bin/helm \
+    && chmod +x /usr/local/bin/helm \
+    && rm -rf /tmp/helm.tgz /tmp/linux-amd64 \
+    || echo "  Warning: Helm installation failed (non-fatal)"
+  _timer "Helm" "$t"
+fi
+
 # ── Go ───────────────────────────────────────────────────────────────────────
 if ! _installed go; then
   t=$(date +%s)
@@ -286,4 +353,9 @@ printf "%-10s %s\n" "sqlite3:" "$(sqlite3 --version 2>/dev/null || echo 'not fou
 printf "%-10s %s\n" "psql:" "$(psql --version 2>/dev/null || echo 'not found')"
 printf "%-10s %s\n" "redis-cli:" "$(redis-cli --version 2>/dev/null || echo 'not found')"
 printf "%-10s %s\n" "Docker:" "$(docker --version 2>/dev/null || echo 'not found')"
+printf "%-10s %s\n" "aws:" "$(aws --version 2>/dev/null || echo 'not found')"
+printf "%-10s %s\n" "gcloud:" "$(gcloud --version | head -1 2>/dev/null || echo 'not found')"
+printf "%-10s %s\n" "terraform:" "$(terraform version | head -1 2>/dev/null || echo 'not found')"
+printf "%-10s %s\n" "kubectl:" "$(kubectl version --client=true --output=yaml 2>/dev/null | head -2 | tail -1 2>/dev/null || echo 'not found')"
+printf "%-10s %s\n" "helm:" "$(helm version --short 2>/dev/null || echo 'not found')"
 echo "Chromium:  ${PLAYWRIGHT_CHROMIUM:-not found}"

@@ -72,6 +72,14 @@ if command -v docker &>/dev/null; then
 fi
 
 echo ""
+echo "Cloud CLIs"
+_check aws
+_check gcloud
+_check terraform
+_check kubectl
+_check helm
+
+echo ""
 echo "Browser Automation"
 CHROMIUM=$(find /root/.cache/ms-playwright -name "chrome" -path "*/chrome-linux/chrome" 2>/dev/null | head -1)
 [ -n "$CHROMIUM" ] && ok "Playwright Chromium: $CHROMIUM" || fail "Playwright Chromium: not found"
