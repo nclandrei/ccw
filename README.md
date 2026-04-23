@@ -69,6 +69,8 @@ Pass `auto` to either flag to install only what the repo actually needs. Detecti
 
 Extras are detected from lockfiles, `Dockerfile` / `docker-compose.yml`, `playwright`/`puppeteer` in `package.json`, `[tool.uv]` in `pyproject.toml`, and `postgres`/`redis` images referenced in compose files.
 
+The `cloud` extra (aws, gcloud, terraform, kubectl, helm) is detected from any of: `*.tf` / `*.tfvars` at the root, a `terraform/` / `infra/` / `iac/` / `k8s/` / `kubernetes/` / `manifests/` directory, or a `Chart.yaml`, `helmfile.yaml`, `kubeconfig`, or `kustomization.yaml` file at the root.
+
 ### Version pinning
 
 Override any of the baked-in versions with `--versions KEY=VALUE` (comma-separated for multiple). Unspecified tools use the defaults in `DEFAULT_VERSIONS`.
