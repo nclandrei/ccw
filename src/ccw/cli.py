@@ -10,6 +10,7 @@ import textwrap
 from pathlib import Path
 
 from . import __version__
+from .detect import detect_extras, detect_toolchains
 from .sections import (
     ALL_EXTRAS,
     ALL_TOOLCHAINS,
@@ -33,6 +34,20 @@ def _parse_set(value: str, valid: set[str], label: str) -> set[str]:
         print(f"Valid {label}: {', '.join(sorted(valid))}", file=sys.stderr)
         sys.exit(1)
     return items
+
+
+def _resolve_toolchains(value: str, project_root: Path) -> set[str]:
+    """Resolve --toolchains. 'auto' sniffs project_root for marker files."""
+    if value == "auto":
+        return detect_toolchains(project_root)
+    return _parse_set(value, ALL_TOOLCHAINS, "toolchains")
+
+
+def _resolve_extras(value: str, project_root: Path) -> set[str]:
+    """Resolve --extras. 'auto' sniffs project_root for marker files."""
+    if value == "auto":
+        return detect_extras(project_root)
+    return _parse_set(value, ALL_EXTRAS, "extras")
 
 
 def _parse_versions(value: str) -> dict[str, str]:
@@ -87,8 +102,9 @@ def _write_script(path: Path, content: str, force: bool) -> bool:
 
 
 def cmd_init(args: argparse.Namespace) -> None:
-    toolchains = _parse_set(args.toolchains, ALL_TOOLCHAINS, "toolchains")
-    extras = _parse_set(args.extras, ALL_EXTRAS, "extras")
+    project_root = Path.cwd()
+    toolchains = _resolve_toolchains(args.toolchains, project_root)
+    extras = _resolve_extras(args.extras, project_root)
     versions = _parse_versions(args.versions)
     scripts_dir = args.scripts_dir
     skills_dir = (args.skills).strip().strip("/")
@@ -102,7 +118,6 @@ def cmd_init(args: argparse.Namespace) -> None:
         # Chromium install needs npx
         toolchains.add("node")
 
-    project_root = Path.cwd()
     scripts_path = project_root / scripts_dir
     env_file = _resolve_env_file(args.env_file, project_root)
 
@@ -194,9 +209,16 @@ files, push, and start a Claude Code web session. The VM provisions itself.
 Commands:
   ccweb init                   Generate scripts and wire settings.json
   ccweb init --toolchains TC   Comma-separated: node,python,go,rust,ruby,
-                               java,deno,elixir,zig,dotnet,php (default: all)
+                               java,deno,elixir,zig,dotnet,php (default: all).
+                               Use 'auto' to detect from project marker files
+                               (package.json, go.mod, Cargo.toml, etc.) and
+                               install only what the repo actually uses.
   ccweb init --extras EX       Comma-separated: uv,pnpm,yarn,bun,browser,
-                               postgres,redis,docker (default: all)
+                               postgres,redis,docker (default: all).
+                               Use 'auto' to detect from lockfiles and other
+                               markers (pnpm-lock.yaml, Dockerfile, uv.lock,
+                               playwright in package.json, postgres/redis in
+                               docker-compose, etc.).
   ccweb init --scripts-dir D   Output directory for scripts (default: scripts)
   ccweb init --skills DIR      Path (repo-relative) to a directory of Claude
                                Code skills. Each subdirectory containing
@@ -347,6 +369,9 @@ Environment:
 Examples:
   # Full setup — every toolchain and extra
   uvx ccweb init
+
+  # Auto-detect toolchains and extras from the repo's marker files
+  uvx ccweb init --toolchains auto --extras auto
 
   # Node + Python project (most common)
   uvx ccweb init --toolchains node,python --extras uv,browser
