@@ -29,7 +29,7 @@ set -a; source /etc/environment 2>/dev/null || true; set +a
 # ── Detect Chromium ──────────────────────────────────────────────────────────
 PLAYWRIGHT_CHROMIUM=$(find /root/.cache/ms-playwright -name "chrome" -path "*/chrome-linux/chrome" 2>/dev/null | head -1 || true)
 [ -z "$PLAYWRIGHT_CHROMIUM" ] && \
-  PLAYWRIGHT_CHROMIUM=$(find /root/.cache/ms-playwright -name "headless_shell" -path "*/chrome-linux/headless_shell" 2>/dev/null | head -1)
+  PLAYWRIGHT_CHROMIUM=$(find /root/.cache/ms-playwright -name "headless_shell" -path "*/chrome-linux/headless_shell" 2>/dev/null | head -1 || true)
 
 # ── Detect toolchain paths ──────────────────────────────────────────────────
 CARGO_BIN=""; [ -d /root/.cargo/bin ] && CARGO_BIN="/root/.cargo/bin"

@@ -39,6 +39,7 @@ Requires a local Docker daemon. The repo is mounted read-only at `/workspace`, s
 ## Options
 
 ```
+uvx ccweb init --toolchains auto --extras auto    # Detect from repo files
 uvx ccweb init --toolchains node,python           # Just Node + Python
 uvx ccweb init --toolchains go --extras postgres  # Go + psql
 uvx ccweb init --versions go=1.23.0,zig=0.14.0    # Pin tool versions
@@ -59,6 +60,28 @@ uvx ccweb init --skills ""                        # Disable skills wiring
 `uv`, `pnpm`, `yarn`, `bun`, `browser`, `postgres`, `redis`, `docker` — default: all
 
 `gh`, `duckdb`, `yq`, `sqlite3`, `jq`, `pandoc`, `shellcheck`, and friends are always installed — no flag needed.
+
+### Auto-detection
+
+Pass `auto` to either flag to install only what the repo actually needs. Detection inspects the project root for marker files:
+
+| Toolchain | Markers |
+| --- | --- |
+| `node` | `package.json`, `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock` |
+| `python` | `pyproject.toml`, `requirements.txt`, `setup.py`, `Pipfile`, `uv.lock` |
+| `go` | `go.mod` |
+| `rust` | `Cargo.toml` |
+| `ruby` | `Gemfile`, `*.gemspec` |
+| `java` | `pom.xml`, `build.gradle`, `build.gradle.kts` |
+| `deno` | `deno.json`, `deno.jsonc` |
+| `elixir` | `mix.exs` |
+| `zig` | `build.zig`, `build.zig.zon` |
+| `dotnet` | `*.csproj`, `*.fsproj`, `*.sln` |
+| `php` | `composer.json` |
+
+Extras are detected from lockfiles, `Dockerfile` / `docker-compose.yml`, `playwright`/`puppeteer` in `package.json`, `[tool.uv]` in `pyproject.toml`, and `postgres`/`redis` images referenced in compose files.
+
+The `cloud` extra (aws, gcloud, terraform, kubectl, helm) is detected from any of: `*.tf` / `*.tfvars` at the root, a `terraform/` / `infra/` / `iac/` / `k8s/` / `kubernetes/` / `manifests/` directory, or a `Chart.yaml`, `helmfile.yaml`, `kubeconfig`, or `kustomization.yaml` file at the root.
 
 ### Version pinning
 

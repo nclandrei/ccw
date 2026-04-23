@@ -28,7 +28,17 @@ class AllExtrasTests(unittest.TestCase):
 
     def test_remaining_extras_are_stack_specific(self):
         # These still have a legitimate opt-out reason
-        for extra in ("browser", "docker", "postgres", "redis", "uv", "pnpm", "yarn", "bun"):
+        for extra in (
+            "browser",
+            "docker",
+            "postgres",
+            "redis",
+            "uv",
+            "pnpm",
+            "yarn",
+            "bun",
+            "cloud",
+        ):
             self.assertIn(extra, ALL_EXTRAS)
 
 
@@ -83,22 +93,31 @@ class DiagnoseAlwaysOnChecksTests(unittest.TestCase):
         self.diagnose_sh = build_diagnose_sh(set(), set())
 
     def test_always_on_tools_checked(self):
-        for tool in ("jq", "curl", "gh", "duckdb", "yq", "shellcheck", "sqlite3", "pandoc"):
+        for tool in (
+            "jq",
+            "curl",
+            "gh",
+            "duckdb",
+            "yq",
+            "shellcheck",
+            "sqlite3",
+            "pandoc",
+        ):
             self.assertIn(tool, self.diagnose_sh, f"diagnose.sh should check {tool}")
 
 
 class ChromiumSectionIsPipefailSafeTest(unittest.TestCase):
-    """setup.sh runs under `set -euo pipefail`. A `X=$(find ... | head -1)`
-    assignment on a missing directory exits non-zero via pipefail and kills
-    the script. Every such pipe in setup_chromium must be guarded with `|| true`
-    (or similar) to keep the script running on a fresh container."""
+    """`X=$(find ... | head -1)` under pipefail returns non-zero when the
+    directory doesn't exist. Defensive `|| true` keeps the assignment
+    well-behaved even if someone reintroduces `set -e`."""
 
     def test_find_head_pipes_are_guarded(self):
         from ccw.sections import setup_chromium
+
         script = setup_chromium()
         for line in script.splitlines():
             if "find /root/.cache/ms-playwright" in line and "| head -1" in line:
-                self.assertIn("|| true", line, f"Unguarded pipe will trip set -e: {line!r}")
+                self.assertIn("|| true", line, f"Unguarded pipe: {line!r}")
 
 
 class SetupShResilienceTest(unittest.TestCase):
@@ -118,10 +137,11 @@ class SetupShResilienceTest(unittest.TestCase):
             None,
         )
         self.assertIsNotNone(first_set, "setup.sh must declare set options")
-        self.assertNotIn("-e", first_set, f"setup.sh must not use errexit: {first_set!r}")
+        self.assertNotIn(
+            "-e", first_set, f"setup.sh must not use errexit: {first_set!r}"
+        )
 
     def test_go_curl_pipe_is_guarded(self):
-        # Look at every line that pipes into tar downloading Go
         for line in self.setup_sh.splitlines():
             if "go.dev/dl/go" in line and "tar" in line:
                 self.assertTrue(
@@ -143,11 +163,75 @@ class SetupShResilienceTest(unittest.TestCase):
         # must appear AFTER all downloaders and must NOT sit behind a guard
         # that skips on failure.
         self.assertIn("# === claude-code-setup ===", self.setup_sh)
-        # And the marker block should not be conditioned on earlier success
         marker_idx = self.setup_sh.index("# === claude-code-setup ===")
         tail = self.setup_sh[marker_idx:]
-        # The marker-writing code must run unconditionally (outside `|| true` scopes)
         self.assertIn("/etc/environment", tail)
+
+
+class CloudExtraTests(unittest.TestCase):
+    """The 'cloud' extra ships aws, gcloud, terraform, kubectl, and helm."""
+
+    def test_cloud_in_all_extras(self):
+        self.assertIn("cloud", ALL_EXTRAS)
+
+    def test_cloud_not_installed_without_extra(self):
+        setup_sh = build_setup_sh(set(), set())
+        # Each of these URLs is unique to its respective cloud tool installer
+        for signature in (
+            "awscli-exe-linux",
+            "packages.cloud.google.com",
+            "releases.hashicorp.com/terraform",
+            "dl.k8s.io/release",
+            "get.helm.sh",
+        ):
+            self.assertNotIn(signature, setup_sh)
+
+    def test_cloud_installs_aws_cli(self):
+        setup_sh = build_setup_sh(set(), {"cloud"})
+        self.assertIn("awscli-exe-linux", setup_sh)
+        self.assertIn("_installed aws", setup_sh)
+
+    def test_cloud_installs_gcloud(self):
+        setup_sh = build_setup_sh(set(), {"cloud"})
+        self.assertIn("packages.cloud.google.com", setup_sh)
+        self.assertIn("google-cloud-cli", setup_sh)
+
+    def test_cloud_installs_terraform(self):
+        setup_sh = build_setup_sh(set(), {"cloud"})
+        self.assertIn("releases.hashicorp.com/terraform", setup_sh)
+        self.assertIn("_installed terraform", setup_sh)
+
+    def test_cloud_installs_kubectl(self):
+        setup_sh = build_setup_sh(set(), {"cloud"})
+        self.assertIn("dl.k8s.io/release", setup_sh)
+        self.assertIn("_installed kubectl", setup_sh)
+
+    def test_cloud_installs_helm(self):
+        setup_sh = build_setup_sh(set(), {"cloud"})
+        self.assertIn("get.helm.sh", setup_sh)
+        self.assertIn("_installed helm", setup_sh)
+
+    def test_summary_lists_cloud_tools_when_enabled(self):
+        setup_sh = build_setup_sh(set(), {"cloud"})
+        for label in ("aws:", "gcloud:", "terraform:", "kubectl:", "helm:"):
+            self.assertIn(label, setup_sh)
+
+    def test_summary_omits_cloud_tools_when_disabled(self):
+        setup_sh = build_setup_sh(set(), set())
+        for label in ("aws:", "gcloud:", "terraform:", "kubectl:", "helm:"):
+            self.assertNotIn(label, setup_sh)
+
+    def test_diagnose_checks_cloud_tools_when_enabled(self):
+        diagnose_sh = build_diagnose_sh(set(), {"cloud"})
+        for tool in ("aws", "gcloud", "terraform", "kubectl", "helm"):
+            self.assertIn(
+                f"_check {tool}", diagnose_sh, f"diagnose.sh missing check for {tool}"
+            )
+
+    def test_diagnose_skips_cloud_tools_when_disabled(self):
+        diagnose_sh = build_diagnose_sh(set(), set())
+        for tool in ("terraform", "kubectl", "helm"):
+            self.assertNotIn(f"_check {tool}", diagnose_sh)
 
 
 class FullBuildSmokeTest(unittest.TestCase):
