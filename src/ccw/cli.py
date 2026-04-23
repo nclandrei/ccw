@@ -16,6 +16,7 @@ from .sections import (
     ALL_TOOLCHAINS,
     DEFAULT_VERSIONS,
     build_diagnose_sh,
+    build_post_tool_use_sh,
     build_session_start_sh,
     build_setup_sh,
 )
@@ -60,7 +61,10 @@ def _parse_versions(value: str) -> dict[str, str]:
         if not pair:
             continue
         if "=" not in pair:
-            print(f"Error: --versions entry must be KEY=VALUE, got: {pair}", file=sys.stderr)
+            print(
+                f"Error: --versions entry must be KEY=VALUE, got: {pair}",
+                file=sys.stderr,
+            )
             sys.exit(1)
         key, _, val = pair.partition("=")
         key = key.strip().lower()
@@ -142,12 +146,15 @@ def cmd_init(args: argparse.Namespace) -> None:
         (scripts_path / "setup.sh", build_setup_sh(toolchains, extras, versions)),
         (
             scripts_path / "session-start.sh",
-            build_session_start_sh(toolchains, extras, scripts_dir, skills_dir, env_file),
+            build_session_start_sh(
+                toolchains, extras, scripts_dir, skills_dir, env_file
+            ),
         ),
         (
             scripts_path / "diagnose.sh",
             build_diagnose_sh(toolchains, extras, skills_dir, env_file),
         ),
+        (scripts_path / "post-tool-use.sh", build_post_tool_use_sh()),
     ]
 
     if dry_run:
@@ -216,7 +223,9 @@ def cmd_doctor(args: argparse.Namespace) -> None:
     with tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False) as tmp:
         tmp.write(script)
         tmp_path = tmp.name
-    print("No diagnose.sh found — running full diagnostics against all toolchains/extras.")
+    print(
+        "No diagnose.sh found — running full diagnostics against all toolchains/extras."
+    )
     print()
     os.execvp("bash", ["bash", tmp_path])
 
@@ -290,8 +299,25 @@ What ccweb init generates:
                                project dependencies (npm, pip, cargo, go mod, etc).
   scripts/diagnose.sh          Prints green/red status for every installed tool.
                                Run anytime to verify the environment.
-  .claude/settings.json        Wires session-start.sh as a SessionStart hook.
-                               Merges with existing settings, never clobbers.
+  scripts/post-tool-use.sh     PostToolUse hook — runs after every Edit/Write.
+                               Reads the edited file path from the hook payload
+                               and dispatches to the matching formatter:
+                                 ruff       → .py
+                                 gofmt      → .go
+                                 rustfmt    → .rs
+                                 zig fmt    → .zig
+                                 mix format → .ex, .exs
+                                 shfmt      → .sh, .bash
+                                 prettier   → .js/.ts/.json/.md/.css/.yaml/...
+                                              (falls back to `deno fmt` when
+                                              prettier is unavailable)
+                               Each call is guarded by `command -v`, and the
+                               hook always exits 0 so a missing or failing
+                               formatter never blocks the agent.
+  .claude/settings.json        Wires session-start.sh as a SessionStart hook
+                               and post-tool-use.sh as a PostToolUse hook
+                               (matcher: Edit|Write|MultiEdit). Merges with
+                               existing settings, never clobbers.
 
 Toolchains (what each installs):
   node       Pre-installed on the VM. ccweb wires dependency install from
