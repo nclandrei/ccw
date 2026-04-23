@@ -93,6 +93,7 @@ def cmd_init(args: argparse.Namespace) -> None:
     scripts_dir = args.scripts_dir
     skills_dir = (args.skills).strip().strip("/")
     force = args.force
+    dry_run = getattr(args, "dry_run", False)
 
     # Auto-add uv when python is selected
     if "python" in toolchains:
@@ -118,24 +119,31 @@ def cmd_init(args: argparse.Namespace) -> None:
     if versions:
         pins = ", ".join(f"{k}={v}" for k, v in sorted(versions.items()))
         print(f"Versions:     {pins}")
+    if dry_run:
+        print("Mode:         dry-run (no files written)")
     print()
 
-    # Generate scripts
-    _write_script(
-        scripts_path / "setup.sh",
-        build_setup_sh(toolchains, extras, versions),
-        force,
-    )
-    _write_script(
-        scripts_path / "session-start.sh",
-        build_session_start_sh(toolchains, extras, scripts_dir, skills_dir, env_file),
-        force,
-    )
-    _write_script(
-        scripts_path / "diagnose.sh",
-        build_diagnose_sh(toolchains, extras, skills_dir, env_file),
-        force,
-    )
+    scripts = [
+        (scripts_path / "setup.sh", build_setup_sh(toolchains, extras, versions)),
+        (
+            scripts_path / "session-start.sh",
+            build_session_start_sh(toolchains, extras, scripts_dir, skills_dir, env_file),
+        ),
+        (
+            scripts_path / "diagnose.sh",
+            build_diagnose_sh(toolchains, extras, skills_dir, env_file),
+        ),
+    ]
+
+    if dry_run:
+        for path, content in scripts:
+            _print_script(path, content)
+        print()
+        print("Dry-run complete. Re-run without --dry-run to write these files.")
+        return
+
+    for path, content in scripts:
+        _write_script(path, content, force)
 
     # Merge settings.json
     print()
@@ -149,6 +157,26 @@ def cmd_init(args: argparse.Namespace) -> None:
     print("  3. git push")
     print("  4. Start a Claude Code web session — session-start.sh auto-provisions")
     print("  5. Run `ccweb doctor` to verify everything is working")
+
+
+def _print_script(path: Path, content: str) -> None:
+    banner = f"===== {path} ====="
+    print(banner)
+    print(content, end="" if content.endswith("\n") else "\n")
+    print("=" * len(banner))
+    print()
+
+
+def cmd_show_setup(args: argparse.Namespace) -> None:
+    """Print setup.sh to stdout without writing anything."""
+    toolchains = _parse_set(args.toolchains, ALL_TOOLCHAINS, "toolchains")
+    extras = _parse_set(args.extras, ALL_EXTRAS, "extras")
+    versions = _parse_versions(args.versions)
+    if "python" in toolchains:
+        extras.add("uv")
+    if "browser" in extras and "node" not in toolchains:
+        toolchains.add("node")
+    sys.stdout.write(build_setup_sh(toolchains, extras, versions))
 
 
 def cmd_doctor(args: argparse.Namespace) -> None:
@@ -214,6 +242,14 @@ Commands:
                                read — ccweb never stores or transmits values.
                                Pass --env-file "" to disable auto-detection.
   ccweb init --force           Overwrite existing files without prompting
+  ccweb init --dry-run         Print the scripts that would be generated to
+                               stdout without writing anything to disk or
+                               modifying .claude/settings.json.
+  ccweb show setup             Print setup.sh to stdout without writing.
+                               Accepts --toolchains, --extras, --versions to
+                               preview a specific configuration. Useful for
+                               piping into a reviewer, diffing, or pasting
+                               into the claude.ai/code Setup Script field.
   ccweb doctor                 Run diagnostics on the current environment.
                                Uses scripts/diagnose.sh if present, otherwise
                                builds a full diagnostic in-memory against all
@@ -400,11 +436,20 @@ def main() -> None:
     init_p.add_argument("--versions", default="")
     init_p.add_argument("--env-file", dest="env_file", default=None)
     init_p.add_argument("--force", action="store_true")
+    init_p.add_argument("--dry-run", dest="dry_run", action="store_true")
     init_p.add_argument("-h", "--help", action="store_true")
 
     # doctor
     doctor_p = sub.add_parser("doctor", add_help=False)
     doctor_p.add_argument("-h", "--help", action="store_true")
+
+    # show
+    show_p = sub.add_parser("show", add_help=False)
+    show_p.add_argument("target", nargs="?", default=None)
+    show_p.add_argument("--toolchains", default="all")
+    show_p.add_argument("--extras", default="all")
+    show_p.add_argument("--versions", default="")
+    show_p.add_argument("-h", "--help", action="store_true")
 
     args = parser.parse_args()
 
@@ -417,6 +462,12 @@ def main() -> None:
         cmd_init(args)
     elif args.command == "doctor":
         cmd_doctor(args)
+    elif args.command == "show":
+        if args.target == "setup":
+            cmd_show_setup(args)
+        else:
+            print("Usage: ccweb show setup", file=sys.stderr)
+            sys.exit(2)
     else:
         print(HELP_TEXT)
         sys.exit(0)
