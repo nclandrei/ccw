@@ -31,9 +31,31 @@ case "$FILE" in
       gofmt -w "$FILE" >/dev/null 2>&1 || true
     fi
     ;;
+  *.rs)
+    if command -v rustfmt &>/dev/null; then
+      rustfmt --edition 2021 "$FILE" >/dev/null 2>&1 || true
+    fi
+    ;;
+  *.zig)
+    if command -v zig &>/dev/null; then
+      zig fmt "$FILE" >/dev/null 2>&1 || true
+    fi
+    ;;
+  *.ex|*.exs)
+    if command -v mix &>/dev/null; then
+      mix format "$FILE" >/dev/null 2>&1 || true
+    fi
+    ;;
+  *.sh|*.bash)
+    if command -v shfmt &>/dev/null; then
+      shfmt -w "$FILE" >/dev/null 2>&1 || true
+    fi
+    ;;
   *.js|*.jsx|*.ts|*.tsx|*.mjs|*.cjs|*.json|*.jsonc|*.md|*.mdx|*.css|*.scss|*.html|*.yaml|*.yml)
     if command -v prettier &>/dev/null; then
       prettier --write --log-level=silent "$FILE" >/dev/null 2>&1 || true
+    elif command -v deno &>/dev/null; then
+      deno fmt --quiet "$FILE" >/dev/null 2>&1 || true
     fi
     ;;
 esac

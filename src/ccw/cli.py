@@ -46,7 +46,10 @@ def _parse_versions(value: str) -> dict[str, str]:
         if not pair:
             continue
         if "=" not in pair:
-            print(f"Error: --versions entry must be KEY=VALUE, got: {pair}", file=sys.stderr)
+            print(
+                f"Error: --versions entry must be KEY=VALUE, got: {pair}",
+                file=sys.stderr,
+            )
             sys.exit(1)
         key, _, val = pair.partition("=")
         key = key.strip().lower()
@@ -94,6 +97,7 @@ def cmd_init(args: argparse.Namespace) -> None:
     scripts_dir = args.scripts_dir
     skills_dir = (args.skills).strip().strip("/")
     force = args.force
+    dry_run = getattr(args, "dry_run", False)
 
     # Auto-add uv when python is selected
     if "python" in toolchains:
@@ -119,29 +123,34 @@ def cmd_init(args: argparse.Namespace) -> None:
     if versions:
         pins = ", ".join(f"{k}={v}" for k, v in sorted(versions.items()))
         print(f"Versions:     {pins}")
+    if dry_run:
+        print("Mode:         dry-run (no files written)")
     print()
 
-    # Generate scripts
-    _write_script(
-        scripts_path / "setup.sh",
-        build_setup_sh(toolchains, extras, versions),
-        force,
-    )
-    _write_script(
-        scripts_path / "session-start.sh",
-        build_session_start_sh(toolchains, extras, scripts_dir, skills_dir, env_file),
-        force,
-    )
-    _write_script(
-        scripts_path / "diagnose.sh",
-        build_diagnose_sh(toolchains, extras, skills_dir, env_file),
-        force,
-    )
-    _write_script(
-        scripts_path / "post-tool-use.sh",
-        build_post_tool_use_sh(),
-        force,
-    )
+    scripts = [
+        (scripts_path / "setup.sh", build_setup_sh(toolchains, extras, versions)),
+        (
+            scripts_path / "session-start.sh",
+            build_session_start_sh(
+                toolchains, extras, scripts_dir, skills_dir, env_file
+            ),
+        ),
+        (
+            scripts_path / "diagnose.sh",
+            build_diagnose_sh(toolchains, extras, skills_dir, env_file),
+        ),
+        (scripts_path / "post-tool-use.sh", build_post_tool_use_sh()),
+    ]
+
+    if dry_run:
+        for path, content in scripts:
+            _print_script(path, content)
+        print()
+        print("Dry-run complete. Re-run without --dry-run to write these files.")
+        return
+
+    for path, content in scripts:
+        _write_script(path, content, force)
 
     # Merge settings.json
     print()
@@ -155,6 +164,26 @@ def cmd_init(args: argparse.Namespace) -> None:
     print("  3. git push")
     print("  4. Start a Claude Code web session — session-start.sh auto-provisions")
     print("  5. Run `ccweb doctor` to verify everything is working")
+
+
+def _print_script(path: Path, content: str) -> None:
+    banner = f"===== {path} ====="
+    print(banner)
+    print(content, end="" if content.endswith("\n") else "\n")
+    print("=" * len(banner))
+    print()
+
+
+def cmd_show_setup(args: argparse.Namespace) -> None:
+    """Print setup.sh to stdout without writing anything."""
+    toolchains = _parse_set(args.toolchains, ALL_TOOLCHAINS, "toolchains")
+    extras = _parse_set(args.extras, ALL_EXTRAS, "extras")
+    versions = _parse_versions(args.versions)
+    if "python" in toolchains:
+        extras.add("uv")
+    if "browser" in extras and "node" not in toolchains:
+        toolchains.add("node")
+    sys.stdout.write(build_setup_sh(toolchains, extras, versions))
 
 
 def cmd_doctor(args: argparse.Namespace) -> None:
@@ -179,7 +208,9 @@ def cmd_doctor(args: argparse.Namespace) -> None:
     with tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False) as tmp:
         tmp.write(script)
         tmp_path = tmp.name
-    print("No diagnose.sh found — running full diagnostics against all toolchains/extras.")
+    print(
+        "No diagnose.sh found — running full diagnostics against all toolchains/extras."
+    )
     print()
     os.execvp("bash", ["bash", tmp_path])
 
@@ -202,7 +233,7 @@ Commands:
   ccweb init --toolchains TC   Comma-separated: node,python,go,rust,ruby,
                                java,deno,elixir,zig,dotnet,php (default: all)
   ccweb init --extras EX       Comma-separated: uv,pnpm,yarn,bun,browser,
-                               postgres,redis,docker (default: all)
+                               postgres,redis,docker,cloud (default: all)
   ccweb init --scripts-dir D   Output directory for scripts (default: scripts)
   ccweb init --skills DIR      Path (repo-relative) to a directory of Claude
                                Code skills. Each subdirectory containing
@@ -211,7 +242,8 @@ Commands:
                                Pass --skills "" to disable.
   ccweb init --versions PINS   Pin tool versions, e.g. go=1.23.0,zig=0.14.0.
                                Valid keys: go, zig, gh, duckdb, yq,
-                               dotnet_channel. Unspecified tools use defaults.
+                               dotnet_channel, terraform, kubectl.
+                               Unspecified tools use defaults.
   ccweb init --env-file PATH   Repo-relative path to an env schema file
                                (default: auto-detect .env.example or
                                .env.template). session-start.sh warns when
@@ -220,6 +252,14 @@ Commands:
                                read — ccweb never stores or transmits values.
                                Pass --env-file "" to disable auto-detection.
   ccweb init --force           Overwrite existing files without prompting
+  ccweb init --dry-run         Print the scripts that would be generated to
+                               stdout without writing anything to disk or
+                               modifying .claude/settings.json.
+  ccweb show setup             Print setup.sh to stdout without writing.
+                               Accepts --toolchains, --extras, --versions to
+                               preview a specific configuration. Useful for
+                               piping into a reviewer, diffing, or pasting
+                               into the claude.ai/code Setup Script field.
   ccweb doctor                 Run diagnostics on the current environment.
                                Uses scripts/diagnose.sh if present, otherwise
                                builds a full diagnostic in-memory against all
@@ -239,12 +279,19 @@ What ccweb init generates:
                                Run anytime to verify the environment.
   scripts/post-tool-use.sh     PostToolUse hook — runs after every Edit/Write.
                                Reads the edited file path from the hook payload
-                               and dispatches to the matching formatter: ruff
-                               for .py, prettier for web files (.js/.ts/.json/
-                               .md/.css/.yaml/...), gofmt for .go. Each run is
-                               guarded by `command -v`, and the hook always
-                               exits 0 so a missing formatter never blocks the
-                               agent.
+                               and dispatches to the matching formatter:
+                                 ruff       → .py
+                                 gofmt      → .go
+                                 rustfmt    → .rs
+                                 zig fmt    → .zig
+                                 mix format → .ex, .exs
+                                 shfmt      → .sh, .bash
+                                 prettier   → .js/.ts/.json/.md/.css/.yaml/...
+                                              (falls back to `deno fmt` when
+                                              prettier is unavailable)
+                               Each call is guarded by `command -v`, and the
+                               hook always exits 0 so a missing or failing
+                               formatter never blocks the agent.
   .claude/settings.json        Wires session-start.sh as a SessionStart hook
                                and post-tool-use.sh as a PostToolUse hook
                                (matcher: Edit|Write|MultiEdit). Merges with
@@ -289,6 +336,10 @@ Extras (what each installs):
   docker     Installs Docker CLI. Note: the Docker daemon is not available on
              the VM, but the CLI is useful for docker compose files and remote
              Docker hosts.
+  cloud      Installs the common cloud/infra CLIs: aws (AWS CLI v2), gcloud
+             (Google Cloud SDK), terraform, kubectl, and helm. Authentication
+             still relies on env vars / credentials set via the claude.ai
+             Environment Variables UI; ccweb does not manage credentials.
 
 Skills (--skills DIR, default: .claude/skills):
   Claude Code auto-discovers skills from ~/.claude/skills/<name>/SKILL.md.
@@ -315,14 +366,15 @@ Environment variables (--env-file PATH):
   variable as set or missing.
 
 Version pinning (--versions KEY=VALUE,...):
-  By default ccweb uses known-good versions for Go, Zig, gh, duckdb, yq, and
-  the .NET channel. Override any subset with --versions:
+  By default ccweb uses known-good versions for Go, Zig, gh, duckdb, yq, the
+  .NET channel, terraform, and kubectl. Override any subset with --versions:
 
     --versions go=1.23.0
     --versions go=1.23.0,zig=0.14.0,gh=2.74.1
     --versions dotnet_channel=LTS
+    --versions terraform=1.9.8,kubectl=1.31.2
 
-  Valid keys: go, zig, gh, duckdb, yq, dotnet_channel.
+  Valid keys: go, zig, gh, duckdb, yq, dotnet_channel, terraform, kubectl.
 
 How it works at runtime:
   1. User opens a Claude Code web session on a repo that has ccweb scripts.
@@ -370,6 +422,9 @@ Examples:
   # Go backend with database tools
   uvx ccweb init --toolchains go --extras postgres,redis
 
+  # Infra/DevOps workflow — cloud CLIs only (aws, gcloud, terraform, kubectl, helm)
+  uvx ccweb init --toolchains "" --extras cloud
+
   # Rust project, no opt-in extras (always-on CLI tools still included)
   uvx ccweb init --toolchains rust --extras ""
 
@@ -416,11 +471,20 @@ def main() -> None:
     init_p.add_argument("--versions", default="")
     init_p.add_argument("--env-file", dest="env_file", default=None)
     init_p.add_argument("--force", action="store_true")
+    init_p.add_argument("--dry-run", dest="dry_run", action="store_true")
     init_p.add_argument("-h", "--help", action="store_true")
 
     # doctor
     doctor_p = sub.add_parser("doctor", add_help=False)
     doctor_p.add_argument("-h", "--help", action="store_true")
+
+    # show
+    show_p = sub.add_parser("show", add_help=False)
+    show_p.add_argument("target", nargs="?", default=None)
+    show_p.add_argument("--toolchains", default="all")
+    show_p.add_argument("--extras", default="all")
+    show_p.add_argument("--versions", default="")
+    show_p.add_argument("-h", "--help", action="store_true")
 
     args = parser.parse_args()
 
@@ -433,6 +497,12 @@ def main() -> None:
         cmd_init(args)
     elif args.command == "doctor":
         cmd_doctor(args)
+    elif args.command == "show":
+        if args.target == "setup":
+            cmd_show_setup(args)
+        else:
+            print("Usage: ccweb show setup", file=sys.stderr)
+            sys.exit(2)
     else:
         print(HELP_TEXT)
         sys.exit(0)

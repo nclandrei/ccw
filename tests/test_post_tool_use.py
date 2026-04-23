@@ -41,6 +41,28 @@ class BuildPostToolUseTests(unittest.TestCase):
         self.assertIn("gofmt", self.script)
         self.assertIn(".go", self.script)
 
+    def test_runs_rustfmt_for_rust_files(self):
+        self.assertIn("rustfmt", self.script)
+        self.assertIn(".rs", self.script)
+
+    def test_runs_zig_fmt_for_zig_files(self):
+        self.assertIn("zig fmt", self.script)
+        self.assertIn(".zig", self.script)
+
+    def test_runs_mix_format_for_elixir_files(self):
+        self.assertIn("mix format", self.script)
+        self.assertIn(".ex", self.script)
+        self.assertIn(".exs", self.script)
+
+    def test_runs_shfmt_for_shell_files(self):
+        self.assertIn("shfmt", self.script)
+        self.assertIn(".sh", self.script)
+        self.assertIn(".bash", self.script)
+
+    def test_deno_fmt_fallback_for_web_files(self):
+        # If prettier is not available, deno fmt handles JS/TS/JSON/MD too.
+        self.assertIn("deno fmt", self.script)
+
     def test_tool_presence_guarded(self):
         # Formatters may not be installed in every project — must be guarded.
         self.assertIn("command -v", self.script)
@@ -83,7 +105,10 @@ class MergeSettingsPostToolUseTests(unittest.TestCase):
                         {
                             "matcher": "",
                             "hooks": [
-                                {"type": "command", "command": "scripts/session-start.sh"}
+                                {
+                                    "type": "command",
+                                    "command": "scripts/session-start.sh",
+                                }
                             ],
                         }
                     ],
@@ -113,7 +138,10 @@ class MergeSettingsPostToolUseTests(unittest.TestCase):
                         {
                             "matcher": "",
                             "hooks": [
-                                {"type": "command", "command": "scripts/session-start.sh"}
+                                {
+                                    "type": "command",
+                                    "command": "scripts/session-start.sh",
+                                }
                             ],
                         }
                     ],
@@ -123,7 +151,10 @@ class MergeSettingsPostToolUseTests(unittest.TestCase):
             merge_settings(root, "scripts")
             data = json.loads(settings_path.read_text())
             self.assertIn("PostToolUse", data["hooks"])
-            self.assertIn("post-tool-use.sh", data["hooks"]["PostToolUse"][0]["hooks"][0]["command"])
+            self.assertIn(
+                "post-tool-use.sh",
+                data["hooks"]["PostToolUse"][0]["hooks"][0]["command"],
+            )
 
 
 if __name__ == "__main__":

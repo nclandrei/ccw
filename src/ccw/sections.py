@@ -11,6 +11,8 @@ DEFAULT_VERSIONS: dict[str, str] = {
     "duckdb": "1.1.3",
     "yq": "4.44.3",
     "dotnet_channel": "STS",
+    "terraform": "1.9.8",
+    "kubectl": "1.31.2",
 }
 
 
@@ -321,18 +323,92 @@ fi
 """
 
 
+def setup_cloud(versions: dict[str, str]) -> str:
+    """Cloud CLIs: aws, gcloud, terraform, kubectl, helm."""
+    tf_version = _v(versions, "terraform")
+    k8s_version = _v(versions, "kubectl")
+    return f"""\
+# ── Cloud CLIs (aws, gcloud, terraform, kubectl, helm) ───────────────────────
+# AWS CLI v2 — official bundle
+if ! _installed aws; then
+  t=$(date +%s)
+  echo "Installing AWS CLI v2..."
+  curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip \\
+    && unzip -qo /tmp/awscliv2.zip -d /tmp \\
+    && /tmp/aws/install --update \\
+    && rm -rf /tmp/aws /tmp/awscliv2.zip \\
+    || echo "  Warning: AWS CLI installation failed (non-fatal)"
+  _timer "AWS CLI" "$t"
+fi
+
+# Google Cloud SDK (gcloud) — via Google's apt repo
+if ! _installed gcloud; then
+  t=$(date +%s)
+  echo "Installing Google Cloud SDK..."
+  apt-get install -y -qq --no-install-recommends apt-transport-https ca-certificates gnupg 2>/dev/null || true
+  curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \\
+    | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg 2>/dev/null || true
+  echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \\
+    > /etc/apt/sources.list.d/google-cloud-sdk.list
+  apt-get update -qq
+  apt-get install -y -qq --no-install-recommends google-cloud-cli 2>/dev/null \\
+    || echo "  Warning: gcloud installation failed (non-fatal)"
+  _timer "gcloud" "$t"
+fi
+
+# Terraform — HashiCorp release binary
+if ! _installed terraform; then
+  t=$(date +%s)
+  TERRAFORM_VERSION="{tf_version}"
+  echo "Installing Terraform ${{TERRAFORM_VERSION}}..."
+  curl -fsSL "https://releases.hashicorp.com/terraform/${{TERRAFORM_VERSION}}/terraform_${{TERRAFORM_VERSION}}_linux_amd64.zip" \\
+    -o /tmp/terraform.zip \\
+    && unzip -qo /tmp/terraform.zip -d /usr/local/bin \\
+    && chmod +x /usr/local/bin/terraform \\
+    && rm -f /tmp/terraform.zip \\
+    || echo "  Warning: Terraform installation failed (non-fatal)"
+  _timer "Terraform" "$t"
+fi
+
+# kubectl — Kubernetes CLI
+if ! _installed kubectl; then
+  t=$(date +%s)
+  KUBECTL_VERSION="{k8s_version}"
+  echo "Installing kubectl ${{KUBECTL_VERSION}}..."
+  curl -fsSL "https://dl.k8s.io/release/v${{KUBECTL_VERSION}}/bin/linux/amd64/kubectl" \\
+    -o /usr/local/bin/kubectl \\
+    && chmod +x /usr/local/bin/kubectl \\
+    || echo "  Warning: kubectl installation failed (non-fatal)"
+  _timer "kubectl" "$t"
+fi
+
+# Helm — Kubernetes package manager
+if ! _installed helm; then
+  t=$(date +%s)
+  echo "Installing Helm..."
+  curl -fsSL https://get.helm.sh/helm-v3.16.2-linux-amd64.tar.gz -o /tmp/helm.tgz \\
+    && tar -xzf /tmp/helm.tgz -C /tmp \\
+    && mv /tmp/linux-amd64/helm /usr/local/bin/helm \\
+    && chmod +x /usr/local/bin/helm \\
+    && rm -rf /tmp/helm.tgz /tmp/linux-amd64 \\
+    || echo "  Warning: Helm installation failed (non-fatal)"
+  _timer "Helm" "$t"
+fi
+"""
+
+
 def setup_node_managers(extras: set[str]) -> str:
     parts = [
-        '# ── Node.js package managers ────────────────────────────────────────────────',
-        't=$(date +%s)',
-        '# Ensure npm global bin is on PATH for this script',
+        "# ── Node.js package managers ────────────────────────────────────────────────",
+        "t=$(date +%s)",
+        "# Ensure npm global bin is on PATH for this script",
         'NPM_PREFIX="$(npm config get prefix 2>/dev/null)"',
         'export PATH="${NPM_PREFIX}/bin:${PATH}"',
     ]
     if "pnpm" in extras:
-        parts.append('_installed pnpm || npm install -g pnpm || true')
+        parts.append("_installed pnpm || npm install -g pnpm || true")
     if "yarn" in extras:
-        parts.append('_installed yarn || npm install -g yarn || true')
+        parts.append("_installed yarn || npm install -g yarn || true")
 
     # Symlink into /usr/local/bin so they're always findable
     bins = []
@@ -342,10 +418,12 @@ def setup_node_managers(extras: set[str]) -> str:
         bins.extend(["yarn", "yarnpkg"])
     if bins:
         bin_list = " ".join(bins)
-        parts.append(f'for bin in {bin_list}; do')
+        parts.append(f"for bin in {bin_list}; do")
         parts.append('  SRC="${NPM_PREFIX}/bin/${bin}"')
-        parts.append('  [ -f "$SRC" ] && [ ! -e "/usr/local/bin/${bin}" ] && ln -sf "$SRC" "/usr/local/bin/${bin}"')
-        parts.append('done')
+        parts.append(
+            '  [ -f "$SRC" ] && [ ! -e "/usr/local/bin/${bin}" ] && ln -sf "$SRC" "/usr/local/bin/${bin}"'
+        )
+        parts.append("done")
 
     parts.append('_timer "JS package managers" "$t"')
     return "\n".join(parts) + "\n"
@@ -353,29 +431,31 @@ def setup_node_managers(extras: set[str]) -> str:
 
 def setup_env_block(toolchains: set[str], extras: set[str]) -> str:
     lines = [
-        '# ── Persist environment variables ────────────────────────────────────────────',
+        "# ── Persist environment variables ────────────────────────────────────────────",
         'MARKER="# === claude-code-setup ==="',
         'if ! grep -q "$MARKER" /etc/environment 2>/dev/null; then',
-        '  cat >> /etc/environment <<ENVEOF',
-        '${MARKER}',
+        "  cat >> /etc/environment <<ENVEOF",
+        "${MARKER}",
     ]
     if "browser" in extras:
-        lines.append('PUPPETEER_SKIP_DOWNLOAD=true')
+        lines.append("PUPPETEER_SKIP_DOWNLOAD=true")
     if "go" in toolchains:
-        lines.append('GOPATH=/root/go')
+        lines.append("GOPATH=/root/go")
     if "dotnet" in toolchains:
-        lines.append('DOTNET_ROOT=/root/.dotnet')
-    lines.append('ENVEOF')
+        lines.append("DOTNET_ROOT=/root/.dotnet")
+    lines.append("ENVEOF")
 
     # Browser env vars use the resolved path (heredoc is unquoted, so $PLAYWRIGHT_CHROMIUM expands)
     if "browser" in extras:
-        lines.extend([
-            '  if [ -n "${PLAYWRIGHT_CHROMIUM:-}" ]; then',
-            '    echo "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=${PLAYWRIGHT_CHROMIUM}" >> /etc/environment',
-            '    echo "PUPPETEER_EXECUTABLE_PATH=${PLAYWRIGHT_CHROMIUM}" >> /etc/environment',
-            '    echo "CHROME_BIN=${PLAYWRIGHT_CHROMIUM}" >> /etc/environment',
-            '  fi',
-        ])
+        lines.extend(
+            [
+                '  if [ -n "${PLAYWRIGHT_CHROMIUM:-}" ]; then',
+                '    echo "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=${PLAYWRIGHT_CHROMIUM}" >> /etc/environment',
+                '    echo "PUPPETEER_EXECUTABLE_PATH=${PLAYWRIGHT_CHROMIUM}" >> /etc/environment',
+                '    echo "CHROME_BIN=${PLAYWRIGHT_CHROMIUM}" >> /etc/environment',
+                "  fi",
+            ]
+        )
 
     # PATH construction
     path_parts = []
@@ -392,15 +472,15 @@ def setup_env_block(toolchains: set[str], extras: set[str]) -> str:
 
     if path_parts:
         path_str = ":".join(path_parts)
-        lines.append(f'  echo \'PATH="{path_str}:${{PATH}}"\' >> /etc/environment')
+        lines.append(f"  echo 'PATH=\"{path_str}:${{PATH}}\"' >> /etc/environment")
 
-    lines.extend(['fi', ''])
+    lines.extend(["fi", ""])
 
     # Export for current script context
     if "go" in toolchains:
-        lines.append('export GOPATH=/root/go')
+        lines.append("export GOPATH=/root/go")
     if "dotnet" in toolchains:
-        lines.append('export DOTNET_ROOT=/root/.dotnet')
+        lines.append("export DOTNET_ROOT=/root/.dotnet")
     if path_parts:
         path_str = ":".join(path_parts)
         lines.append(f'export PATH="{path_str}:$PATH"')
@@ -410,19 +490,21 @@ def setup_env_block(toolchains: set[str], extras: set[str]) -> str:
 
 def setup_summary(toolchains: set[str], extras: set[str]) -> str:
     lines = [
-        '',
-        '# ── Summary ──────────────────────────────────────────────────────────────────',
-        'ELAPSED=$(( $(date +%s) - SETUP_START ))',
+        "",
+        "# ── Summary ──────────────────────────────────────────────────────────────────",
+        "ELAPSED=$(( $(date +%s) - SETUP_START ))",
         'echo ""',
         'echo "=== Setup complete (${ELAPSED}s) ==="',
     ]
 
     checks: list[tuple[str, str]] = []
     if "node" in toolchains:
-        checks.extend([
-            ("Node", "node --version"),
-            ("npm", "npm --version"),
-        ])
+        checks.extend(
+            [
+                ("Node", "node --version"),
+                ("npm", "npm --version"),
+            ]
+        )
         if "pnpm" in extras:
             checks.append(("pnpm", "pnpm --version"))
         if "yarn" in extras:
@@ -463,6 +545,17 @@ def setup_summary(toolchains: set[str], extras: set[str]) -> str:
         checks.append(("redis-cli", "redis-cli --version"))
     if "docker" in extras:
         checks.append(("Docker", "docker --version"))
+    if "cloud" in extras:
+        checks.append(("aws", "aws --version"))
+        checks.append(("gcloud", "gcloud --version | head -1"))
+        checks.append(("terraform", "terraform version | head -1"))
+        checks.append(
+            (
+                "kubectl",
+                "kubectl version --client=true --output=yaml 2>/dev/null | head -2 | tail -1",
+            )
+        )
+        checks.append(("helm", "helm version --short"))
 
     for label, cmd in checks:
         lines.append(
@@ -493,6 +586,8 @@ def build_setup_sh(
         parts.append(setup_redis())
     if "docker" in extras:
         parts.append(setup_docker())
+    if "cloud" in extras:
+        parts.append(setup_cloud(versions))
     if "go" in toolchains:
         parts.append(setup_go(versions))
     if "rust" in toolchains:
@@ -521,13 +616,13 @@ def build_setup_sh(
 
 
 def session_header(scripts_dir: str) -> str:
-    return f"""\
+    return """\
 #!/bin/bash
 # SessionStart hook — runs every time a session starts (new or resumed).
 # Configured in .claude/settings.json under hooks.SessionStart.
 
 # Only run in remote (cloud) environments
-if [ "${{CLAUDE_CODE_REMOTE:-}}" != "true" ]; then
+if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   echo "Local environment detected — skipping remote setup."
   exit 0
 fi
@@ -539,10 +634,10 @@ SETUP_MARKER="# === claude-code-setup ==="
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 if ! grep -q "$SETUP_MARKER" /etc/environment 2>/dev/null; then
   echo "Setup marker not found — running setup.sh automatically..."
-  if [ -x "${{SCRIPT_DIR}}/setup.sh" ] || [ -f "${{SCRIPT_DIR}}/setup.sh" ]; then
-    bash "${{SCRIPT_DIR}}/setup.sh" 2>&1 || echo "Warning: setup.sh exited with $? (non-fatal)"
+  if [ -x "${SCRIPT_DIR}/setup.sh" ] || [ -f "${SCRIPT_DIR}/setup.sh" ]; then
+    bash "${SCRIPT_DIR}/setup.sh" 2>&1 || echo "Warning: setup.sh exited with $? (non-fatal)"
   else
-    echo "Warning: setup.sh not found at ${{SCRIPT_DIR}}/setup.sh"
+    echo "Warning: setup.sh not found at ${SCRIPT_DIR}/setup.sh"
   fi
 fi
 
@@ -556,46 +651,56 @@ def session_env_detect(toolchains: set[str], extras: set[str]) -> str:
     lines = []
 
     if "browser" in extras:
-        lines.extend([
-            '# ── Detect Chromium ──────────────────────────────────────────────────────────',
-            'PLAYWRIGHT_CHROMIUM=$(find /root/.cache/ms-playwright -name "chrome" -path "*/chrome-linux/chrome" 2>/dev/null | head -1)',
-            '[ -z "$PLAYWRIGHT_CHROMIUM" ] && \\',
-            '  PLAYWRIGHT_CHROMIUM=$(find /root/.cache/ms-playwright -name "headless_shell" -path "*/chrome-linux/headless_shell" 2>/dev/null | head -1)',
-            '',
-        ])
+        lines.extend(
+            [
+                "# ── Detect Chromium ──────────────────────────────────────────────────────────",
+                'PLAYWRIGHT_CHROMIUM=$(find /root/.cache/ms-playwright -name "chrome" -path "*/chrome-linux/chrome" 2>/dev/null | head -1)',
+                '[ -z "$PLAYWRIGHT_CHROMIUM" ] && \\',
+                '  PLAYWRIGHT_CHROMIUM=$(find /root/.cache/ms-playwright -name "headless_shell" -path "*/chrome-linux/headless_shell" 2>/dev/null | head -1)',
+                "",
+            ]
+        )
 
-    lines.extend([
-        '# ── Detect toolchain paths ──────────────────────────────────────────────────',
-    ])
+    lines.extend(
+        [
+            "# ── Detect toolchain paths ──────────────────────────────────────────────────",
+        ]
+    )
     if "rust" in toolchains:
-        lines.append('CARGO_BIN=""; [ -d /root/.cargo/bin ] && CARGO_BIN="/root/.cargo/bin"')
+        lines.append(
+            'CARGO_BIN=""; [ -d /root/.cargo/bin ] && CARGO_BIN="/root/.cargo/bin"'
+        )
     if "uv" in extras:
         lines.append('UV_BIN=""; [ -d /root/.local/bin ] && UV_BIN="/root/.local/bin"')
     if "deno" in toolchains:
-        lines.append('DENO_BIN=""; [ -d /root/.deno/bin ] && DENO_BIN="/root/.deno/bin"')
+        lines.append(
+            'DENO_BIN=""; [ -d /root/.deno/bin ] && DENO_BIN="/root/.deno/bin"'
+        )
 
     return "\n".join(lines) + "\n"
 
 
 def session_persist_env(toolchains: set[str], extras: set[str]) -> str:
     lines = [
-        '',
-        '# ── Persist env vars for Claude\'s Bash tool ──────────────────────────────────',
-        '_persist() {',
+        "",
+        "# ── Persist env vars for Claude's Bash tool ──────────────────────────────────",
+        "_persist() {",
         '  local k="$1" v="$2"',
         '  [ -n "${CLAUDE_ENV_FILE:-}" ] && echo "${k}=${v}" >> "$CLAUDE_ENV_FILE"',
         '  export "${k}=${v}"',
-        '}',
-        '',
+        "}",
+        "",
     ]
 
     if "browser" in extras:
-        lines.extend([
-            '_persist CHROME_BIN                         "${PLAYWRIGHT_CHROMIUM:-}"',
-            '_persist PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH "${PLAYWRIGHT_CHROMIUM:-}"',
-            '_persist PUPPETEER_EXECUTABLE_PATH          "${PLAYWRIGHT_CHROMIUM:-}"',
-            '_persist PUPPETEER_SKIP_DOWNLOAD            "true"',
-        ])
+        lines.extend(
+            [
+                '_persist CHROME_BIN                         "${PLAYWRIGHT_CHROMIUM:-}"',
+                '_persist PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH "${PLAYWRIGHT_CHROMIUM:-}"',
+                '_persist PUPPETEER_EXECUTABLE_PATH          "${PLAYWRIGHT_CHROMIUM:-}"',
+                '_persist PUPPETEER_SKIP_DOWNLOAD            "true"',
+            ]
+        )
     if "go" in toolchains:
         lines.append('_persist GOPATH                             "/root/go"')
     if "dotnet" in toolchains:
@@ -607,7 +712,7 @@ def session_persist_env(toolchains: set[str], extras: set[str]) -> str:
         path_parts.append("/usr/local/go/bin:/root/go/bin")
     if "dotnet" in toolchains:
         path_parts.append("/root/.dotnet")
-    lines.append('')
+    lines.append("")
     lines.append(f'NEW_PATH="{":".join(path_parts)}"' if path_parts else 'NEW_PATH=""')
     if "rust" in toolchains:
         lines.append('[ -n "${CARGO_BIN:-}" ] && NEW_PATH="${CARGO_BIN}:${NEW_PATH}"')
@@ -618,16 +723,18 @@ def session_persist_env(toolchains: set[str], extras: set[str]) -> str:
     lines.append('[ -n "$NEW_PATH" ] && _persist PATH "${NEW_PATH}:${PATH}"')
 
     # Fallback profile.d
-    lines.extend([
-        '',
-        '# Fallback for when CLAUDE_ENV_FILE isn\'t available',
-        'if [ -z "${CLAUDE_ENV_FILE:-}" ]; then',
-        '  cat > /etc/profile.d/claude-code-env.sh <<\'PROFILE\'',
-    ])
+    lines.extend(
+        [
+            "",
+            "# Fallback for when CLAUDE_ENV_FILE isn't available",
+            'if [ -z "${CLAUDE_ENV_FILE:-}" ]; then',
+            "  cat > /etc/profile.d/claude-code-env.sh <<'PROFILE'",
+        ]
+    )
     if "go" in toolchains:
-        lines.append('export GOPATH=/root/go')
+        lines.append("export GOPATH=/root/go")
     if "dotnet" in toolchains:
-        lines.append('export DOTNET_ROOT=/root/.dotnet')
+        lines.append("export DOTNET_ROOT=/root/.dotnet")
 
     fallback_path_parts = []
     if "rust" in toolchains:
@@ -643,78 +750,96 @@ def session_persist_env(toolchains: set[str], extras: set[str]) -> str:
     if fallback_path_parts:
         lines.append(f'export PATH="{":".join(fallback_path_parts)}:$PATH"')
 
-    lines.append('PROFILE')
+    lines.append("PROFILE")
 
     if "browser" in extras:
-        lines.extend([
-            '  if [ -n "${PLAYWRIGHT_CHROMIUM:-}" ]; then',
-            '    cat >> /etc/profile.d/claude-code-env.sh <<CHROMIUM',
-            'export CHROME_BIN="${PLAYWRIGHT_CHROMIUM}"',
-            'export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="${PLAYWRIGHT_CHROMIUM}"',
-            'export PUPPETEER_EXECUTABLE_PATH="${PLAYWRIGHT_CHROMIUM}"',
-            'export PUPPETEER_SKIP_DOWNLOAD=true',
-            'CHROMIUM',
-            '  fi',
-        ])
+        lines.extend(
+            [
+                '  if [ -n "${PLAYWRIGHT_CHROMIUM:-}" ]; then',
+                "    cat >> /etc/profile.d/claude-code-env.sh <<CHROMIUM",
+                'export CHROME_BIN="${PLAYWRIGHT_CHROMIUM}"',
+                'export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="${PLAYWRIGHT_CHROMIUM}"',
+                'export PUPPETEER_EXECUTABLE_PATH="${PLAYWRIGHT_CHROMIUM}"',
+                "export PUPPETEER_SKIP_DOWNLOAD=true",
+                "CHROMIUM",
+                "  fi",
+            ]
+        )
 
-    lines.append('fi')
+    lines.append("fi")
     return "\n".join(lines) + "\n"
 
 
 def session_deps(toolchains: set[str]) -> str:
     lines = [
-        '',
-        '# ── Install project dependencies ────────────────────────────────────────────',
+        "",
+        "# ── Install project dependencies ────────────────────────────────────────────",
         'cd "${CLAUDE_PROJECT_DIR:-$(pwd)}" 2>/dev/null || exit 0',
-        '',
+        "",
     ]
 
     if "node" in toolchains:
-        lines.extend([
-            '# Node',
-            'if   [ -f package-lock.json ];  then npm install --prefer-offline 2>/dev/null || true',
-            'elif [ -f pnpm-lock.yaml ];     then pnpm install --frozen-lockfile 2>/dev/null || true',
-            'elif [ -f yarn.lock ];          then yarn install --frozen-lockfile 2>/dev/null || true',
-            'elif [ -f bun.lock ] || [ -f bun.lockb ]; then bun install --frozen-lockfile 2>/dev/null || true',
-            'fi',
-            '',
-        ])
+        lines.extend(
+            [
+                "# Node",
+                "if   [ -f package-lock.json ];  then npm install --prefer-offline 2>/dev/null || true",
+                "elif [ -f pnpm-lock.yaml ];     then pnpm install --frozen-lockfile 2>/dev/null || true",
+                "elif [ -f yarn.lock ];          then yarn install --frozen-lockfile 2>/dev/null || true",
+                "elif [ -f bun.lock ] || [ -f bun.lockb ]; then bun install --frozen-lockfile 2>/dev/null || true",
+                "fi",
+                "",
+            ]
+        )
 
     if "deno" in toolchains:
-        lines.extend([
-            '# Deno',
-            '[ -f deno.json ] || [ -f deno.jsonc ] && command -v deno &>/dev/null && deno install 2>/dev/null || true',
-            '',
-        ])
+        lines.extend(
+            [
+                "# Deno",
+                "[ -f deno.json ] || [ -f deno.jsonc ] && command -v deno &>/dev/null && deno install 2>/dev/null || true",
+                "",
+            ]
+        )
 
     if "python" in toolchains:
-        lines.extend([
-            '# Python',
-            'if [ -f pyproject.toml ]; then',
-            '  if   command -v uv &>/dev/null;     then uv sync 2>/dev/null || uv pip install -e . 2>/dev/null || true',
-            '  elif command -v poetry &>/dev/null;  then poetry install 2>/dev/null || true',
-            '  else pip install -e . 2>/dev/null || true; fi',
-            'elif [ -f requirements.txt ]; then',
-            '  if command -v uv &>/dev/null; then uv pip install -q -r requirements.txt 2>/dev/null || true',
-            '  else pip install -q -r requirements.txt 2>/dev/null || true; fi',
-            'fi',
-            '',
-        ])
+        lines.extend(
+            [
+                "# Python",
+                "if [ -f pyproject.toml ]; then",
+                "  if   command -v uv &>/dev/null;     then uv sync 2>/dev/null || uv pip install -e . 2>/dev/null || true",
+                "  elif command -v poetry &>/dev/null;  then poetry install 2>/dev/null || true",
+                "  else pip install -e . 2>/dev/null || true; fi",
+                "elif [ -f requirements.txt ]; then",
+                "  if command -v uv &>/dev/null; then uv pip install -q -r requirements.txt 2>/dev/null || true",
+                "  else pip install -q -r requirements.txt 2>/dev/null || true; fi",
+                "fi",
+                "",
+            ]
+        )
 
     if "go" in toolchains:
-        lines.append('[ -f go.mod ] && go mod download 2>/dev/null || true')
+        lines.append("[ -f go.mod ] && go mod download 2>/dev/null || true")
     if "rust" in toolchains:
-        lines.append('[ -f Cargo.toml ] && command -v cargo &>/dev/null && cargo fetch 2>/dev/null || true')
+        lines.append(
+            "[ -f Cargo.toml ] && command -v cargo &>/dev/null && cargo fetch 2>/dev/null || true"
+        )
     if "ruby" in toolchains:
-        lines.append('[ -f Gemfile ] && command -v bundle &>/dev/null && bundle install --quiet 2>/dev/null || true')
+        lines.append(
+            "[ -f Gemfile ] && command -v bundle &>/dev/null && bundle install --quiet 2>/dev/null || true"
+        )
     if "elixir" in toolchains:
-        lines.append('[ -f mix.exs ] && command -v mix &>/dev/null && mix deps.get 2>/dev/null || true')
+        lines.append(
+            "[ -f mix.exs ] && command -v mix &>/dev/null && mix deps.get 2>/dev/null || true"
+        )
     if "dotnet" in toolchains:
-        lines.append('[ -f "*.csproj" ] || [ -f "*.fsproj" ] && command -v dotnet &>/dev/null && dotnet restore 2>/dev/null || true')
+        lines.append(
+            '[ -f "*.csproj" ] || [ -f "*.fsproj" ] && command -v dotnet &>/dev/null && dotnet restore 2>/dev/null || true'
+        )
     if "php" in toolchains:
-        lines.append('[ -f composer.json ] && command -v composer &>/dev/null && composer install --no-interaction --quiet 2>/dev/null || true')
+        lines.append(
+            "[ -f composer.json ] && command -v composer &>/dev/null && composer install --no-interaction --quiet 2>/dev/null || true"
+        )
 
-    lines.extend(['', 'echo "=== Session ready ==="', 'exit 0'])
+    lines.extend(["", 'echo "=== Session ready ==="', "exit 0"])
     return "\n".join(lines) + "\n"
 
 
@@ -804,172 +929,207 @@ def build_diagnose_sh(
 ) -> str:
     """Generate diagnose.sh for the selected toolchains/extras."""
     lines = [
-        '#!/bin/bash',
-        '# Diagnostic script for Claude Code web environments.',
-        '# Usage: bash scripts/diagnose.sh',
-        'set -uo pipefail',
-        '',
+        "#!/bin/bash",
+        "# Diagnostic script for Claude Code web environments.",
+        "# Usage: bash scripts/diagnose.sh",
+        "set -uo pipefail",
+        "",
         "G='\\033[0;32m'; Y='\\033[0;33m'; R='\\033[0;31m'; N='\\033[0m'",
         'ok()   { echo -e "  ${G}ok${N}  $1"; }',
         'warn() { echo -e "  ${Y}!!${N}  $1"; }',
         'fail() { echo -e "  ${R}no${N}  $1"; }',
-        '',
-        '_check() {',
+        "",
+        "_check() {",
         '  local name="$1" cmd="${2:-$1}"',
         '  if command -v "$cmd" &>/dev/null; then',
         '    ok "$name: $($cmd --version 2>&1 | head -1)"',
-        '  else',
+        "  else",
         '    fail "$name: not installed"',
-        '  fi',
-        '}',
-        '',
+        "  fi",
+        "}",
+        "",
         'echo "Claude Code Web Environment Diagnostics"',
         'echo "========================================"',
         'echo ""',
-        '',
+        "",
         'echo "System"',
         'ok "OS: $(grep PRETTY_NAME /etc/os-release 2>/dev/null | cut -d= -f2 | tr -d \'\\"\' || echo unknown)"',
-        'ok "CPU: $(nproc 2>/dev/null || echo ?) cores | RAM: $(free -h 2>/dev/null | awk \'/Mem:/{print $2}\' || echo ?) | Disk: $(df -h / 2>/dev/null | awk \'NR==2{print $4}\' || echo ?)"',
-        '',
+        "ok \"CPU: $(nproc 2>/dev/null || echo ?) cores | RAM: $(free -h 2>/dev/null | awk '/Mem:/{print $2}' || echo ?) | Disk: $(df -h / 2>/dev/null | awk 'NR==2{print $4}' || echo ?)\"",
+        "",
         'echo ""',
         'echo "Cloud Environment"',
         '[ "${CLAUDE_CODE_REMOTE:-}" = "true" ] && ok "CLAUDE_CODE_REMOTE=true" || warn "CLAUDE_CODE_REMOTE not set"',
         '[ -n "${CLAUDE_ENV_FILE:-}" ] && ok "CLAUDE_ENV_FILE is set" || warn "CLAUDE_ENV_FILE not set"',
-        '',
+        "",
         'echo ""',
         'echo "Toolchains"',
     ]
 
     if "node" in toolchains:
-        lines.extend([
-            '_check "Node.js" node',
-            '_check npm',
-        ])
+        lines.extend(
+            [
+                '_check "Node.js" node',
+                "_check npm",
+            ]
+        )
         if "pnpm" in extras:
-            lines.append('_check pnpm')
+            lines.append("_check pnpm")
         if "yarn" in extras:
-            lines.append('_check yarn')
+            lines.append("_check yarn")
         if "bun" in extras:
-            lines.append('_check bun')
+            lines.append("_check bun")
     if "deno" in toolchains:
-        lines.append('_check Deno deno')
+        lines.append("_check Deno deno")
     if "python" in toolchains:
         lines.append('_check "Python" python3')
-        lines.append('_check pip')
+        lines.append("_check pip")
         if "uv" in extras:
-            lines.append('_check uv')
+            lines.append("_check uv")
     if "go" in toolchains:
-        lines.append('command -v go &>/dev/null && ok "Go: $(go version 2>&1)" || fail "Go: not installed"')
+        lines.append(
+            'command -v go &>/dev/null && ok "Go: $(go version 2>&1)" || fail "Go: not installed"'
+        )
     if "rust" in toolchains:
-        lines.extend(['_check "Rust" rustc', '_check Cargo cargo'])
+        lines.extend(['_check "Rust" rustc', "_check Cargo cargo"])
     if "ruby" in toolchains:
-        lines.append('_check Ruby ruby')
+        lines.append("_check Ruby ruby")
     if "java" in toolchains:
-        lines.append('command -v java &>/dev/null && ok "Java: $(java -version 2>&1 | grep version | head -1)" || fail "Java: not installed"')
+        lines.append(
+            'command -v java &>/dev/null && ok "Java: $(java -version 2>&1 | grep version | head -1)" || fail "Java: not installed"'
+        )
     if "elixir" in toolchains:
-        lines.extend([
-            '_check Erlang erl',
-            'command -v elixir &>/dev/null && ok "Elixir: $(elixir --version 2>&1 | tail -1)" || fail "Elixir: not installed"',
-        ])
+        lines.extend(
+            [
+                "_check Erlang erl",
+                'command -v elixir &>/dev/null && ok "Elixir: $(elixir --version 2>&1 | tail -1)" || fail "Elixir: not installed"',
+            ]
+        )
     if "zig" in toolchains:
-        lines.append('_check Zig zig')
+        lines.append("_check Zig zig")
     if "dotnet" in toolchains:
         lines.append('_check ".NET" dotnet')
     if "php" in toolchains:
-        lines.extend([
-            '_check PHP php',
-            '_check Composer composer',
-        ])
+        lines.extend(
+            [
+                "_check PHP php",
+                "_check Composer composer",
+            ]
+        )
 
-    lines.extend([
-        '',
-        'echo ""',
-        'echo "CLI Tools"',
-        '_check git',
-        '_check gh',
-        '_check jq',
-        '_check yq',
-        '_check curl',
-        '_check duckdb',
-        '_check sqlite3',
-        '_check pandoc',
-        '_check shellcheck',
-    ])
+    lines.extend(
+        [
+            "",
+            'echo ""',
+            'echo "CLI Tools"',
+            "_check git",
+            "_check gh",
+            "_check jq",
+            "_check yq",
+            "_check curl",
+            "_check duckdb",
+            "_check sqlite3",
+            "_check pandoc",
+            "_check shellcheck",
+        ]
+    )
     if "postgres" in extras:
-        lines.append('_check psql')
+        lines.append("_check psql")
     if "redis" in extras:
-        lines.append('_check redis-cli')
+        lines.append("_check redis-cli")
     if "docker" in extras:
-        lines.extend([
-            '_check Docker docker',
-            'if command -v docker &>/dev/null; then',
-            '  docker ps &>/dev/null && ok "Docker daemon: running" || warn "Docker CLI installed but daemon not running"',
-            'fi',
-        ])
+        lines.extend(
+            [
+                "_check Docker docker",
+                "if command -v docker &>/dev/null; then",
+                '  docker ps &>/dev/null && ok "Docker daemon: running" || warn "Docker CLI installed but daemon not running"',
+                "fi",
+            ]
+        )
+    if "cloud" in extras:
+        lines.extend(
+            [
+                "",
+                'echo ""',
+                'echo "Cloud CLIs"',
+                "_check aws",
+                "_check gcloud",
+                "_check terraform",
+                "_check kubectl",
+                "_check helm",
+            ]
+        )
 
     if "browser" in extras:
-        lines.extend([
-            '',
-            'echo ""',
-            'echo "Browser Automation"',
-            'CHROMIUM=$(find /root/.cache/ms-playwright -name "chrome" -path "*/chrome-linux/chrome" 2>/dev/null | head -1)',
-            '[ -n "$CHROMIUM" ] && ok "Playwright Chromium: $CHROMIUM" || fail "Playwright Chromium: not found"',
-            'command -v chromium &>/dev/null && ok "chromium symlink: $(which chromium)" || warn "chromium not on PATH"',
-        ])
+        lines.extend(
+            [
+                "",
+                'echo ""',
+                'echo "Browser Automation"',
+                'CHROMIUM=$(find /root/.cache/ms-playwright -name "chrome" -path "*/chrome-linux/chrome" 2>/dev/null | head -1)',
+                '[ -n "$CHROMIUM" ] && ok "Playwright Chromium: $CHROMIUM" || fail "Playwright Chromium: not found"',
+                'command -v chromium &>/dev/null && ok "chromium symlink: $(which chromium)" || warn "chromium not on PATH"',
+            ]
+        )
 
     if skills_dir:
-        lines.extend([
-            '',
-            'echo ""',
-            'echo "Claude Code Skills"',
-            f'SKILLS_SRC="$(cd "$(dirname "${{BASH_SOURCE[0]}}")/.." && pwd)/{skills_dir}"',
-            'SKILLS_DST="${HOME:-/root}/.claude/skills"',
-            '[ -d "$SKILLS_SRC" ] && ok "source: $SKILLS_SRC" || warn "source dir missing: $SKILLS_SRC"',
-            'if [ -d "$SKILLS_SRC" ]; then',
-            '  for skill in "$SKILLS_SRC"/*/; do',
-            '    [ -d "$skill" ] || continue',
-            '    [ -f "${skill}SKILL.md" ] || continue',
-            '    name=$(basename "$skill")',
-            '    if [ -L "${SKILLS_DST}/${name}" ]; then ok "${name}: wired -> $(readlink "${SKILLS_DST}/${name}")"',
-            '    elif [ -e "${SKILLS_DST}/${name}" ]; then warn "${name}: exists but not a symlink"',
-            '    else fail "${name}: not wired"; fi',
-            '  done',
-            'fi',
-        ])
+        lines.extend(
+            [
+                "",
+                'echo ""',
+                'echo "Claude Code Skills"',
+                f'SKILLS_SRC="$(cd "$(dirname "${{BASH_SOURCE[0]}}")/.." && pwd)/{skills_dir}"',
+                'SKILLS_DST="${HOME:-/root}/.claude/skills"',
+                '[ -d "$SKILLS_SRC" ] && ok "source: $SKILLS_SRC" || warn "source dir missing: $SKILLS_SRC"',
+                'if [ -d "$SKILLS_SRC" ]; then',
+                '  for skill in "$SKILLS_SRC"/*/; do',
+                '    [ -d "$skill" ] || continue',
+                '    [ -f "${skill}SKILL.md" ] || continue',
+                '    name=$(basename "$skill")',
+                '    if [ -L "${SKILLS_DST}/${name}" ]; then ok "${name}: wired -> $(readlink "${SKILLS_DST}/${name}")"',
+                '    elif [ -e "${SKILLS_DST}/${name}" ]; then warn "${name}: exists but not a symlink"',
+                '    else fail "${name}: not wired"; fi',
+                "  done",
+                "fi",
+            ]
+        )
 
     if env_file:
-        lines.extend([
-            '',
-            'echo ""',
-            'echo "Required Env Vars"',
-            f'ENV_FILE_PATH="{env_file}"',
-            'ENV_FILE_FULL="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/${ENV_FILE_PATH}"',
-            'if [ -f "$ENV_FILE_FULL" ]; then',
-            '  REQUIRED_VARS=$(grep -Ev \'^[[:space:]]*(#|$)\' "$ENV_FILE_FULL" | grep -oE \'^[A-Z_][A-Z0-9_]*\' | sort -u)',
-            '  for v in $REQUIRED_VARS; do',
-            '    if [ -n "${!v:-}" ]; then ok "$v: set"; else fail "$v: not set"; fi',
-            '  done',
-            'else',
-            '  warn "env file not found: $ENV_FILE_PATH"',
-            'fi',
-        ])
+        lines.extend(
+            [
+                "",
+                'echo ""',
+                'echo "Required Env Vars"',
+                f'ENV_FILE_PATH="{env_file}"',
+                'ENV_FILE_FULL="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/${ENV_FILE_PATH}"',
+                'if [ -f "$ENV_FILE_FULL" ]; then',
+                "  REQUIRED_VARS=$(grep -Ev '^[[:space:]]*(#|$)' \"$ENV_FILE_FULL\" | grep -oE '^[A-Z_][A-Z0-9_]*' | sort -u)",
+                "  for v in $REQUIRED_VARS; do",
+                '    if [ -n "${!v:-}" ]; then ok "$v: set"; else fail "$v: not set"; fi',
+                "  done",
+                "else",
+                '  warn "env file not found: $ENV_FILE_PATH"',
+                "fi",
+            ]
+        )
 
-    lines.extend([
-        '',
-        'echo ""',
-        'echo "Setup Status"',
-        'grep -q "claude-code-setup" /etc/environment 2>/dev/null && ok "setup.sh has run" || warn "setup.sh marker not found"',
-        'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
-        '[ -f "${SCRIPT_DIR}/setup.sh" ] && ok "setup.sh exists" || fail "setup.sh missing"',
-        '[ -f "${SCRIPT_DIR}/session-start.sh" ] && ok "session-start.sh exists" || fail "session-start.sh missing"',
-        'SETTINGS="${SCRIPT_DIR}/../.claude/settings.json"',
-        '[ -f "$SETTINGS" ] && grep -q "SessionStart" "$SETTINGS" 2>/dev/null \\',
-        '  && ok "SessionStart hook wired in settings.json" \\',
-        '  || warn "SessionStart hook not configured"',
-        '',
-        'echo ""',
-        'echo "Done."',
-    ])
+    lines.extend(
+        [
+            "",
+            'echo ""',
+            'echo "Setup Status"',
+            'grep -q "claude-code-setup" /etc/environment 2>/dev/null && ok "setup.sh has run" || warn "setup.sh marker not found"',
+            'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
+            '[ -f "${SCRIPT_DIR}/setup.sh" ] && ok "setup.sh exists" || fail "setup.sh missing"',
+            '[ -f "${SCRIPT_DIR}/session-start.sh" ] && ok "session-start.sh exists" || fail "session-start.sh missing"',
+            'SETTINGS="${SCRIPT_DIR}/../.claude/settings.json"',
+            '[ -f "$SETTINGS" ] && grep -q "SessionStart" "$SETTINGS" 2>/dev/null \\',
+            '  && ok "SessionStart hook wired in settings.json" \\',
+            '  || warn "SessionStart hook not configured"',
+            "",
+            'echo ""',
+            'echo "Done."',
+        ]
+    )
 
     return "\n".join(lines) + "\n"
 
@@ -981,9 +1141,19 @@ def build_post_tool_use_sh() -> str:
     """Generate the PostToolUse hook script.
 
     Reads Claude Code's hook payload on stdin, extracts tool_input.file_path,
-    and runs the appropriate formatter for the file's extension (ruff for
-    Python, prettier for web, gofmt for Go). Always exits 0 so a missing
-    formatter never blocks the agent.
+    and runs the appropriate formatter for the file's extension. Each
+    formatter call is guarded by `command -v` and the hook always exits 0
+    so a missing formatter never blocks the agent.
+
+    Covered languages:
+      ruff          → .py
+      gofmt         → .go
+      rustfmt       → .rs
+      zig fmt       → .zig
+      mix format    → .ex, .exs
+      shfmt         → .sh, .bash
+      prettier      → .js/.ts/.json/.md/.css/.yaml/.html/...
+                      (falls back to `deno fmt` when prettier is missing)
     """
     return r"""#!/bin/bash
 # PostToolUse hook — auto-runs project formatters/linters after Edit/Write.
@@ -1018,9 +1188,31 @@ case "$FILE" in
       gofmt -w "$FILE" >/dev/null 2>&1 || true
     fi
     ;;
+  *.rs)
+    if command -v rustfmt &>/dev/null; then
+      rustfmt --edition 2021 "$FILE" >/dev/null 2>&1 || true
+    fi
+    ;;
+  *.zig)
+    if command -v zig &>/dev/null; then
+      zig fmt "$FILE" >/dev/null 2>&1 || true
+    fi
+    ;;
+  *.ex|*.exs)
+    if command -v mix &>/dev/null; then
+      mix format "$FILE" >/dev/null 2>&1 || true
+    fi
+    ;;
+  *.sh|*.bash)
+    if command -v shfmt &>/dev/null; then
+      shfmt -w "$FILE" >/dev/null 2>&1 || true
+    fi
+    ;;
   *.js|*.jsx|*.ts|*.tsx|*.mjs|*.cjs|*.json|*.jsonc|*.md|*.mdx|*.css|*.scss|*.html|*.yaml|*.yml)
     if command -v prettier &>/dev/null; then
       prettier --write --log-level=silent "$FILE" >/dev/null 2>&1 || true
+    elif command -v deno &>/dev/null; then
+      deno fmt --quiet "$FILE" >/dev/null 2>&1 || true
     fi
     ;;
 esac
@@ -1031,5 +1223,27 @@ exit 0
 
 # ── Public constants ─────────────────────────────────────────────────────────
 
-ALL_TOOLCHAINS = {"node", "python", "go", "rust", "ruby", "java", "deno", "elixir", "zig", "dotnet", "php"}
-ALL_EXTRAS = {"uv", "pnpm", "yarn", "bun", "browser", "postgres", "redis", "docker"}
+ALL_TOOLCHAINS = {
+    "node",
+    "python",
+    "go",
+    "rust",
+    "ruby",
+    "java",
+    "deno",
+    "elixir",
+    "zig",
+    "dotnet",
+    "php",
+}
+ALL_EXTRAS = {
+    "uv",
+    "pnpm",
+    "yarn",
+    "bun",
+    "browser",
+    "postgres",
+    "redis",
+    "docker",
+    "cloud",
+}
