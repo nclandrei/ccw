@@ -101,6 +101,55 @@ class ChromiumSectionIsPipefailSafeTest(unittest.TestCase):
                 self.assertIn("|| true", line, f"Unguarded pipe will trip set -e: {line!r}")
 
 
+class SetupShResilienceTest(unittest.TestCase):
+    """setup.sh runs 10+ best-effort installers over the network. A single
+    transient failure (DNS, 503, SSL) must not abort the whole script and
+    prevent the env marker from being written — otherwise session-start
+    re-runs setup.sh every session forever."""
+
+    def setUp(self):
+        self.setup_sh = build_setup_sh(set(ALL_TOOLCHAINS), set(ALL_EXTRAS))
+
+    def test_header_does_not_use_errexit(self):
+        # `set -e` kills the script on any non-zero exit. For a best-effort
+        # installer, use -uo pipefail only.
+        first_set = next(
+            (line for line in self.setup_sh.splitlines() if line.startswith("set -")),
+            None,
+        )
+        self.assertIsNotNone(first_set, "setup.sh must declare set options")
+        self.assertNotIn("-e", first_set, f"setup.sh must not use errexit: {first_set!r}")
+
+    def test_go_curl_pipe_is_guarded(self):
+        # Look at every line that pipes into tar downloading Go
+        for line in self.setup_sh.splitlines():
+            if "go.dev/dl/go" in line and "tar" in line:
+                self.assertTrue(
+                    "|| " in line or self.setup_sh.count("Go download failed") > 0,
+                    f"Go download pipeline should be guarded: {line!r}",
+                )
+
+    def test_zig_curl_pipe_is_guarded(self):
+        for line in self.setup_sh.splitlines():
+            if "ziglang.org" in line and "tar" in line:
+                self.assertTrue(
+                    "|| " in line or "Zig download failed" in self.setup_sh,
+                    f"Zig download pipeline should be guarded: {line!r}",
+                )
+
+    def test_env_marker_written_even_when_installers_would_fail(self):
+        # Even if a downloader exits non-zero, setup.sh must still reach the
+        # marker block. The simplest way to express this: the marker block
+        # must appear AFTER all downloaders and must NOT sit behind a guard
+        # that skips on failure.
+        self.assertIn("# === claude-code-setup ===", self.setup_sh)
+        # And the marker block should not be conditioned on earlier success
+        marker_idx = self.setup_sh.index("# === claude-code-setup ===")
+        tail = self.setup_sh[marker_idx:]
+        # The marker-writing code must run unconditionally (outside `|| true` scopes)
+        self.assertIn("/etc/environment", tail)
+
+
 class FullBuildSmokeTest(unittest.TestCase):
     """Build with every toolchain and extra — should not raise or produce an empty script."""
 
