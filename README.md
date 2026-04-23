@@ -24,6 +24,18 @@ git push
 uvx ccweb doctor
 ```
 
+## Local Docker validation
+
+Before pushing, validate the generated scripts against a clean Ubuntu 24.04 container:
+
+```bash
+uvx ccweb test                    # runs setup.sh + diagnose.sh in ubuntu:24.04
+uvx ccweb test --image ubuntu:22.04
+uvx ccweb test --shell            # interactive shell for ad-hoc debugging
+```
+
+Requires a local Docker daemon. The repo is mounted read-only at `/workspace`, so the test can never modify your working copy.
+
 ## Options
 
 ```
