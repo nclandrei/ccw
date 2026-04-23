@@ -5,7 +5,14 @@
 # settings at claude.ai/code for faster cold starts (runs before session-start).
 #
 # Runs as root on Ubuntu 24.04. Idempotent — safe to run multiple times.
-set -euo pipefail
+#
+# Deliberately NOT using `set -e`. This is a best-effort installer across
+# 10+ network-bound downloads; a single 503 from one mirror should not
+# abort the whole script and prevent the env marker from being written
+# (which would cause session-start.sh to re-run setup forever). Individual
+# installers guard their own failures with `|| echo "Warning: ..."`, and
+# diagnose.sh is the authoritative check for what's actually installed.
+set -uo pipefail
 
 SETUP_START=$(date +%s)
 echo "=== Cloud environment setup ($(date -Iseconds)) ==="
@@ -85,16 +92,16 @@ _timer "Browser deps" "$t"
 
 # ── Chromium via Playwright ──────────────────────────────────────────────────
 t=$(date +%s)
-PLAYWRIGHT_CHROMIUM=$(find /root/.cache/ms-playwright -name "chrome" -path "*/chrome-linux/chrome" 2>/dev/null | head -1)
+PLAYWRIGHT_CHROMIUM=$(find /root/.cache/ms-playwright -name "chrome" -path "*/chrome-linux/chrome" 2>/dev/null | head -1 || true)
 if [ -z "$PLAYWRIGHT_CHROMIUM" ]; then
   echo "Installing Playwright Chromium..."
   npx playwright install --with-deps chromium 2>/dev/null || true
-  PLAYWRIGHT_CHROMIUM=$(find /root/.cache/ms-playwright -name "chrome" -path "*/chrome-linux/chrome" 2>/dev/null | head -1)
+  PLAYWRIGHT_CHROMIUM=$(find /root/.cache/ms-playwright -name "chrome" -path "*/chrome-linux/chrome" 2>/dev/null | head -1 || true)
 else
   echo "Playwright Chromium already installed"
 fi
 if [ -z "$PLAYWRIGHT_CHROMIUM" ]; then
-  PLAYWRIGHT_CHROMIUM=$(find /root/.cache/ms-playwright -name "headless_shell" -path "*/chrome-linux/headless_shell" 2>/dev/null | head -1)
+  PLAYWRIGHT_CHROMIUM=$(find /root/.cache/ms-playwright -name "headless_shell" -path "*/chrome-linux/headless_shell" 2>/dev/null | head -1 || true)
 fi
 
 # Symlink to standard PATH locations so tools find Chromium without env vars
@@ -211,10 +218,13 @@ if ! _installed go; then
   t=$(date +%s)
   GO_VERSION="1.24.7"
   echo "Installing Go ${GO_VERSION}..."
-  curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" \
-    | tar -C /usr/local -xzf -
-  ln -sf /usr/local/go/bin/go   /usr/local/bin/go
-  ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+  if curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" \
+       | tar -C /usr/local -xzf - ; then
+    ln -sf /usr/local/go/bin/go   /usr/local/bin/go
+    ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+  else
+    echo "  Warning: Go download failed (non-fatal)"
+  fi
   _timer "Go ${GO_VERSION}" "$t"
 fi
 
@@ -252,9 +262,12 @@ if ! _installed zig; then
   t=$(date +%s)
   ZIG_VERSION="0.15.2"
   echo "Installing Zig ${ZIG_VERSION}..."
-  curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz" \
-    | tar -C /usr/local -xJf -
-  ln -sf /usr/local/zig-x86_64-linux-${ZIG_VERSION}/zig /usr/local/bin/zig
+  if curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz" \
+       | tar -C /usr/local -xJf - ; then
+    ln -sf /usr/local/zig-x86_64-linux-${ZIG_VERSION}/zig /usr/local/bin/zig
+  else
+    echo "  Warning: Zig download failed (non-fatal)"
+  fi
   _timer "Zig ${ZIG_VERSION}" "$t"
 fi
 

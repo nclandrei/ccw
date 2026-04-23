@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import stat
 import sys
 import textwrap
@@ -230,6 +231,81 @@ def cmd_doctor(args: argparse.Namespace) -> None:
     os.execvp("bash", ["bash", tmp_path])
 
 
+def build_docker_test_args(
+    image: str,
+    project_root: Path,
+    scripts_dir: str,
+    shell: bool = False,
+    network: str | None = None,
+) -> list[str]:
+    """Assemble the `docker run` argv that validates setup.sh + diagnose.sh
+    against a clean Ubuntu container."""
+    argv = [
+        "docker",
+        "run",
+        "--rm",
+        "-v",
+        f"{project_root}:/workspace:ro",
+        "-w",
+        "/workspace",
+        "-e",
+        "CLAUDE_CODE_REMOTE=true",
+    ]
+    if network:
+        argv.extend(["--network", network])
+    if shell:
+        argv.extend(["-it", image, "bash"])
+        return argv
+
+    payload = (
+        "set -e\n"
+        f'echo "=== ccweb test: setup.sh (on $(grep PRETTY_NAME /etc/os-release | cut -d= -f2 | tr -d \\")) ==="\n'
+        f"bash {scripts_dir}/setup.sh\n"
+        'echo ""\n'
+        'echo "=== ccweb test: diagnose.sh ==="\n'
+        f"bash {scripts_dir}/diagnose.sh\n"
+    )
+    argv.extend([image, "bash", "-c", payload])
+    return argv
+
+
+def cmd_test(args: argparse.Namespace) -> None:
+    """Validate generated scripts against a clean Ubuntu Docker container."""
+    project_root = Path.cwd()
+    scripts_dir = args.scripts_dir
+    scripts_path = project_root / scripts_dir
+
+    setup_sh = scripts_path / "setup.sh"
+    diagnose_sh = scripts_path / "diagnose.sh"
+    if not setup_sh.exists() or not diagnose_sh.exists():
+        missing = setup_sh if not setup_sh.exists() else diagnose_sh
+        print(f"Error: {missing} not found. Run 'ccweb init' first.", file=sys.stderr)
+        sys.exit(1)
+
+    if not shutil.which("docker"):
+        print(
+            "Error: docker not found on PATH. Install Docker to run 'ccweb test'.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    argv = build_docker_test_args(
+        image=args.image,
+        project_root=project_root,
+        scripts_dir=scripts_dir,
+        shell=args.shell,
+        network=args.network,
+    )
+    print(f"Image:   {args.image}")
+    print(f"Mount:   {project_root} -> /workspace (ro)")
+    if args.shell:
+        print("Mode:    interactive shell")
+    else:
+        print(f"Runs:    {scripts_dir}/setup.sh then {scripts_dir}/diagnose.sh")
+    print()
+    os.execvp(argv[0], argv)
+
+
 HELP_TEXT = textwrap.dedent("""\
 ccweb - bootstrap Claude Code web environments so they just work
 
@@ -286,6 +362,16 @@ Commands:
                                Uses scripts/diagnose.sh if present, otherwise
                                builds a full diagnostic in-memory against all
                                toolchains and extras.
+  ccweb test                   Validate setup.sh + diagnose.sh in a clean
+                               Docker ubuntu:24.04 container. Catches broken
+                               installs before pushing. Requires a local
+                               Docker daemon. Flags:
+                                 --image IMG     base image (default ubuntu:24.04)
+                                 --scripts-dir D scripts location (default scripts)
+                                 --shell         drop into an interactive shell
+                                                 instead of auto-running
+                                 --network NET   docker network mode (e.g. host)
+                                                 — useful behind corporate DNS
 
 What ccweb init generates:
   scripts/setup.sh             Runs as root on first session. Installs system
@@ -467,6 +553,13 @@ Examples:
 
   # Check what's installed on the current VM
   ccweb doctor
+
+  # Validate generated scripts against a clean Ubuntu container before pushing
+  ccweb test
+
+  # Try a different base image, or drop into an interactive shell
+  ccweb test --image ubuntu:22.04
+  ccweb test --shell
 """)
 
 
@@ -503,6 +596,14 @@ def main() -> None:
     doctor_p = sub.add_parser("doctor", add_help=False)
     doctor_p.add_argument("-h", "--help", action="store_true")
 
+    # test — local Docker validation
+    test_p = sub.add_parser("test", add_help=False)
+    test_p.add_argument("--image", default="ubuntu:24.04")
+    test_p.add_argument("--scripts-dir", dest="scripts_dir", default="scripts")
+    test_p.add_argument("--shell", action="store_true")
+    test_p.add_argument("--network", default=None)
+    test_p.add_argument("-h", "--help", action="store_true")
+
     # show
     show_p = sub.add_parser("show", add_help=False)
     show_p.add_argument("target", nargs="?", default=None)
@@ -522,6 +623,8 @@ def main() -> None:
         cmd_init(args)
     elif args.command == "doctor":
         cmd_doctor(args)
+    elif args.command == "test":
+        cmd_test(args)
     elif args.command == "show":
         if args.target == "setup":
             cmd_show_setup(args)
