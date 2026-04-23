@@ -224,6 +224,58 @@ class DetectExtrasTests(unittest.TestCase):
             _write(root, "compose.yml", "services:\n  cache:\n    image: redis:7\n")
             self.assertIn("redis", detect_extras(root))
 
+    def test_terraform_file_detects_cloud(self):
+        with _TmpRoot() as root:
+            _touch(root, "main.tf")
+            self.assertIn("cloud", detect_extras(root))
+
+    def test_tfvars_file_detects_cloud(self):
+        with _TmpRoot() as root:
+            _touch(root, "prod.tfvars")
+            self.assertIn("cloud", detect_extras(root))
+
+    def test_terraform_in_subdirectory_detects_cloud(self):
+        # Terraform configs are commonly nested under terraform/ or infra/
+        with _TmpRoot() as root:
+            _touch(root, "terraform/main.tf")
+            self.assertIn("cloud", detect_extras(root))
+
+    def test_helm_chart_detects_cloud(self):
+        with _TmpRoot() as root:
+            _touch(root, "Chart.yaml")
+            self.assertIn("cloud", detect_extras(root))
+
+    def test_helmfile_detects_cloud(self):
+        with _TmpRoot() as root:
+            _touch(root, "helmfile.yaml")
+            self.assertIn("cloud", detect_extras(root))
+
+    def test_kubeconfig_detects_cloud(self):
+        with _TmpRoot() as root:
+            _touch(root, "kubeconfig")
+            self.assertIn("cloud", detect_extras(root))
+
+    def test_k8s_manifests_dir_detects_cloud(self):
+        with _TmpRoot() as root:
+            _touch(root, "k8s/deployment.yaml")
+            self.assertIn("cloud", detect_extras(root))
+
+    def test_kustomization_detects_cloud(self):
+        with _TmpRoot() as root:
+            _touch(root, "kustomization.yaml")
+            self.assertIn("cloud", detect_extras(root))
+
+    def test_plain_repo_does_not_detect_cloud(self):
+        with _TmpRoot() as root:
+            _touch(root, "package.json", "Dockerfile", "README.md")
+            self.assertNotIn("cloud", detect_extras(root))
+
+    def test_yaml_without_k8s_does_not_detect_cloud(self):
+        # A bare config.yaml at root shouldn't imply cloud
+        with _TmpRoot() as root:
+            _touch(root, "config.yaml", "settings.yml")
+            self.assertNotIn("cloud", detect_extras(root))
+
 
 if __name__ == "__main__":
     unittest.main()

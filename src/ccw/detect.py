@@ -111,4 +111,47 @@ def detect_extras(root: Path) -> set[str]:
         if "redis" in text:
             found.add("redis")
 
+    if _detect_cloud(root):
+        found.add("cloud")
+
     return found
+
+
+# Specific filenames at the root that signal IaC/Kubernetes use.
+_CLOUD_ROOT_FILES: tuple[str, ...] = (
+    "Chart.yaml",
+    "helmfile.yaml",
+    "helmfile.yml",
+    "kubeconfig",
+    "kustomization.yaml",
+    "kustomization.yml",
+)
+
+# Glob patterns at the root that signal Terraform.
+_CLOUD_ROOT_GLOBS: tuple[str, ...] = ("*.tf", "*.tfvars")
+
+# Common directory names where Terraform / Kubernetes manifests live nested
+# under the repo root. The directory existing is enough — we don't recurse
+# arbitrarily, which keeps detection cheap and avoids false positives from
+# matches inside node_modules / vendor / etc.
+_CLOUD_DIRS: tuple[str, ...] = (
+    "terraform",
+    "infra",
+    "iac",
+    "k8s",
+    "kubernetes",
+    "manifests",
+)
+
+
+def _detect_cloud(root: Path) -> bool:
+    for name in _CLOUD_ROOT_FILES:
+        if (root / name).exists():
+            return True
+    for pattern in _CLOUD_ROOT_GLOBS:
+        if any(root.glob(pattern)):
+            return True
+    for d in _CLOUD_DIRS:
+        if (root / d).is_dir():
+            return True
+    return False
