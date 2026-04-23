@@ -15,6 +15,7 @@ from .sections import (
     ALL_TOOLCHAINS,
     DEFAULT_VERSIONS,
     build_diagnose_sh,
+    build_post_tool_use_sh,
     build_session_start_sh,
     build_setup_sh,
 )
@@ -136,6 +137,11 @@ def cmd_init(args: argparse.Namespace) -> None:
         build_diagnose_sh(toolchains, extras, skills_dir, env_file),
         force,
     )
+    _write_script(
+        scripts_path / "post-tool-use.sh",
+        build_post_tool_use_sh(),
+        force,
+    )
 
     # Merge settings.json
     print()
@@ -231,8 +237,18 @@ What ccweb init generates:
                                project dependencies (npm, pip, cargo, go mod, etc).
   scripts/diagnose.sh          Prints green/red status for every installed tool.
                                Run anytime to verify the environment.
-  .claude/settings.json        Wires session-start.sh as a SessionStart hook.
-                               Merges with existing settings, never clobbers.
+  scripts/post-tool-use.sh     PostToolUse hook — runs after every Edit/Write.
+                               Reads the edited file path from the hook payload
+                               and dispatches to the matching formatter: ruff
+                               for .py, prettier for web files (.js/.ts/.json/
+                               .md/.css/.yaml/...), gofmt for .go. Each run is
+                               guarded by `command -v`, and the hook always
+                               exits 0 so a missing formatter never blocks the
+                               agent.
+  .claude/settings.json        Wires session-start.sh as a SessionStart hook
+                               and post-tool-use.sh as a PostToolUse hook
+                               (matcher: Edit|Write|MultiEdit). Merges with
+                               existing settings, never clobbers.
 
 Toolchains (what each installs):
   node       Pre-installed on the VM. ccweb wires dependency install from
