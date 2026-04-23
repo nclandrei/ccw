@@ -87,6 +87,20 @@ class DiagnoseAlwaysOnChecksTests(unittest.TestCase):
             self.assertIn(tool, self.diagnose_sh, f"diagnose.sh should check {tool}")
 
 
+class ChromiumSectionIsPipefailSafeTest(unittest.TestCase):
+    """setup.sh runs under `set -euo pipefail`. A `X=$(find ... | head -1)`
+    assignment on a missing directory exits non-zero via pipefail and kills
+    the script. Every such pipe in setup_chromium must be guarded with `|| true`
+    (or similar) to keep the script running on a fresh container."""
+
+    def test_find_head_pipes_are_guarded(self):
+        from ccw.sections import setup_chromium
+        script = setup_chromium()
+        for line in script.splitlines():
+            if "find /root/.cache/ms-playwright" in line and "| head -1" in line:
+                self.assertIn("|| true", line, f"Unguarded pipe will trip set -e: {line!r}")
+
+
 class FullBuildSmokeTest(unittest.TestCase):
     """Build with every toolchain and extra — should not raise or produce an empty script."""
 

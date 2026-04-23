@@ -83,16 +83,16 @@ def setup_chromium() -> str:
     return """\
 # ── Chromium via Playwright ──────────────────────────────────────────────────
 t=$(date +%s)
-PLAYWRIGHT_CHROMIUM=$(find /root/.cache/ms-playwright -name "chrome" -path "*/chrome-linux/chrome" 2>/dev/null | head -1)
+PLAYWRIGHT_CHROMIUM=$(find /root/.cache/ms-playwright -name "chrome" -path "*/chrome-linux/chrome" 2>/dev/null | head -1 || true)
 if [ -z "$PLAYWRIGHT_CHROMIUM" ]; then
   echo "Installing Playwright Chromium..."
   npx playwright install --with-deps chromium 2>/dev/null || true
-  PLAYWRIGHT_CHROMIUM=$(find /root/.cache/ms-playwright -name "chrome" -path "*/chrome-linux/chrome" 2>/dev/null | head -1)
+  PLAYWRIGHT_CHROMIUM=$(find /root/.cache/ms-playwright -name "chrome" -path "*/chrome-linux/chrome" 2>/dev/null | head -1 || true)
 else
   echo "Playwright Chromium already installed"
 fi
 if [ -z "$PLAYWRIGHT_CHROMIUM" ]; then
-  PLAYWRIGHT_CHROMIUM=$(find /root/.cache/ms-playwright -name "headless_shell" -path "*/chrome-linux/headless_shell" 2>/dev/null | head -1)
+  PLAYWRIGHT_CHROMIUM=$(find /root/.cache/ms-playwright -name "headless_shell" -path "*/chrome-linux/headless_shell" 2>/dev/null | head -1 || true)
 fi
 
 # Symlink to standard PATH locations so tools find Chromium without env vars
@@ -558,7 +558,7 @@ def session_env_detect(toolchains: set[str], extras: set[str]) -> str:
     if "browser" in extras:
         lines.extend([
             '# ── Detect Chromium ──────────────────────────────────────────────────────────',
-            'PLAYWRIGHT_CHROMIUM=$(find /root/.cache/ms-playwright -name "chrome" -path "*/chrome-linux/chrome" 2>/dev/null | head -1)',
+            'PLAYWRIGHT_CHROMIUM=$(find /root/.cache/ms-playwright -name "chrome" -path "*/chrome-linux/chrome" 2>/dev/null | head -1 || true)',
             '[ -z "$PLAYWRIGHT_CHROMIUM" ] && \\',
             '  PLAYWRIGHT_CHROMIUM=$(find /root/.cache/ms-playwright -name "headless_shell" -path "*/chrome-linux/headless_shell" 2>/dev/null | head -1)',
             '',
