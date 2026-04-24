@@ -51,6 +51,31 @@ case "$FILE" in
       shfmt -w "$FILE" >/dev/null 2>&1 || true
     fi
     ;;
+  *.c|*.h|*.cc|*.cpp|*.cxx|*.hpp|*.hh|*.hxx|*.m|*.mm)
+    if command -v clang-format &>/dev/null; then
+      clang-format -i "$FILE" >/dev/null 2>&1 || true
+    fi
+    ;;
+  *.rb)
+    if command -v rubocop &>/dev/null; then
+      rubocop -A "$FILE" >/dev/null 2>&1 || true
+    fi
+    ;;
+  *.java)
+    if command -v google-java-format &>/dev/null; then
+      google-java-format -i "$FILE" >/dev/null 2>&1 || true
+    fi
+    ;;
+  *.php)
+    if command -v php-cs-fixer &>/dev/null; then
+      php-cs-fixer fix --quiet "$FILE" >/dev/null 2>&1 || true
+    fi
+    ;;
+  *.tf|*.tfvars)
+    if command -v terraform &>/dev/null; then
+      terraform fmt "$FILE" >/dev/null 2>&1 || true
+    fi
+    ;;
   *.js|*.jsx|*.ts|*.tsx|*.mjs|*.cjs|*.json|*.jsonc|*.md|*.mdx|*.css|*.scss|*.html|*.yaml|*.yml)
     if command -v prettier &>/dev/null; then
       prettier --write --log-level=silent "$FILE" >/dev/null 2>&1 || true

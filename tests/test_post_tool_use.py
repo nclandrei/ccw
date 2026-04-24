@@ -59,6 +59,29 @@ class BuildPostToolUseTests(unittest.TestCase):
         self.assertIn(".sh", self.script)
         self.assertIn(".bash", self.script)
 
+    def test_runs_clang_format_for_c_and_cpp_files(self):
+        self.assertIn("clang-format", self.script)
+        for ext in (".c", ".h", ".cc", ".cpp", ".hpp", ".cxx", ".m", ".mm"):
+            self.assertIn(ext, self.script, f"clang-format should handle {ext}")
+
+    def test_runs_rubocop_for_ruby_files(self):
+        # rubocop -A autocorrects safely; absence must not block.
+        self.assertIn("rubocop", self.script)
+        self.assertIn(".rb", self.script)
+
+    def test_runs_google_java_format_for_java_files(self):
+        self.assertIn("google-java-format", self.script)
+        self.assertIn(".java", self.script)
+
+    def test_runs_php_cs_fixer_for_php_files(self):
+        self.assertIn("php-cs-fixer", self.script)
+        self.assertIn(".php", self.script)
+
+    def test_runs_terraform_fmt_for_tf_files(self):
+        self.assertIn("terraform", self.script)
+        self.assertIn(".tf", self.script)
+        self.assertIn(".tfvars", self.script)
+
     def test_deno_fmt_fallback_for_web_files(self):
         # If prettier is not available, deno fmt handles JS/TS/JSON/MD too.
         self.assertIn("deno fmt", self.script)

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this project is
 
-ccweb is a Python CLI (`uvx ccweb init`) that generates shell scripts to auto-provision Claude Code web environments (Ubuntu 24.04 VMs). It outputs `setup.sh`, `session-start.sh`, `diagnose.sh`, and wires `.claude/settings.json`.
+ccweb is a Python CLI (`uvx ccweb init`) that generates shell scripts to auto-provision Claude Code web environments (Ubuntu 24.04 VMs). It outputs `setup.sh`, `session-start.sh`, `diagnose.sh`, `post-tool-use.sh`, and wires `.claude/settings.json` (SessionStart + PostToolUse hooks).
 
 ## Build and run
 
@@ -20,17 +20,18 @@ uvx --from build pyproject-build
 uv publish --token "$PYPI_API_TOKEN" dist/ccweb-*
 ```
 
-There are no tests. The test loop is: generate scripts, run them in a real Claude Code web session (or Docker Ubuntu 24.04 container), and check `bash scripts/diagnose.sh` output.
+Unit tests live in `tests/` and run via `python3 -m unittest discover -s tests`. The e2e loop is: generate scripts and run them against a clean Ubuntu 24.04 container via `uvx ccweb test` (or in a real Claude Code web session) and check `bash scripts/diagnose.sh` output.
 
 ## Architecture
 
-Three source files in `src/ccw/`:
+Source files in `src/ccw/`:
 
-- **`cli.py`** — argparse CLI with `init` and `doctor` subcommands. The `--help` text is a self-contained agent-readable instruction manual (Showboat/Proctor pattern). All help goes through `HELP_TEXT`, not argparse's built-in help.
-- **`sections.py`** — Pure functions that return shell script fragments. Each function (`setup_go()`, `setup_rust()`, `setup_chromium()`, etc.) returns a bash string. `build_setup_sh()`, `build_session_start_sh()`, and `build_diagnose_sh()` assemble the fragments based on selected toolchains/extras. This is the largest file and where most changes happen.
-- **`settings.py`** — Merges the SessionStart hook into `.claude/settings.json` without clobbering existing settings.
+- **`cli.py`** — argparse CLI with `init`, `doctor`, and `test` subcommands. The `--help` text is a self-contained agent-readable instruction manual (Showboat/Proctor pattern). All help goes through `HELP_TEXT`, not argparse's built-in help.
+- **`sections.py`** — Pure functions that return shell script fragments. Each function (`setup_go()`, `setup_rust()`, `setup_chromium()`, etc.) returns a bash string. `build_setup_sh()`, `build_session_start_sh()`, `build_diagnose_sh()`, and `build_post_tool_use_sh()` assemble the fragments based on selected toolchains/extras. This is the largest file and where most changes happen.
+- **`detect.py`** — Auto-detects toolchains and extras from project marker files (lockfiles, `pyproject.toml`, `Cargo.toml`, Terraform dirs, etc.) when the user passes `--toolchains auto` or `--extras auto`.
+- **`settings.py`** — Merges the SessionStart and PostToolUse hooks into `.claude/settings.json` without clobbering existing settings.
 
-The `scripts/` directory at repo root contains the generated scripts for ccweb's own repo (dog-fooding).
+The `scripts/` directory at repo root contains the generated scripts for ccweb's own repo (dog-fooding), including `post-tool-use.sh` — the PostToolUse hook that formats edited files via ruff, gofmt, rustfmt, zig fmt, mix format, shfmt, clang-format, rubocop, google-java-format, php-cs-fixer, terraform fmt, and prettier (with deno fmt fallback).
 
 ## Key design decisions
 
@@ -58,6 +59,7 @@ The help text in `cli.py` follows the Showboat/Proctor pattern: a flat, self-con
 6. The `.github/workflows/publish.yml` Action auto-publishes to PyPI via trusted publishing (OIDC, no token needed) when the release is created.
 
 Manual PyPI fallback (if the Action fails or for pre-release):
+
 ```bash
 uv publish --token "$PYPI_API_TOKEN" dist/ccweb-X.Y.Z*
 ```
