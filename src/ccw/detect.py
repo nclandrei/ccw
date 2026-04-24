@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+
 # Toolchain → list of marker filenames (exact match in project root).
 # Lockfiles for one ecosystem (pnpm-lock.yaml etc.) imply that ecosystem's
 # toolchain (node), but the package-manager extra is detected separately.
@@ -86,7 +87,11 @@ def detect_extras(root: Path) -> set[str]:
             text = pkg_json.read_text()
         except OSError:
             text = ""
-        if '"playwright"' in text or '"puppeteer"' in text or '"@playwright/test"' in text:
+        if (
+            '"playwright"' in text
+            or '"puppeteer"' in text
+            or '"@playwright/test"' in text
+        ):
             found.add("browser")
 
     compose_files = [
@@ -155,3 +160,86 @@ def _detect_cloud(root: Path) -> bool:
         if (root / d).is_dir():
             return True
     return False
+
+
+# ── Version pin detection ────────────────────────────────────────────────────
+
+# asdf/mise plugin name → our --versions key. Only tools that appear in
+# DEFAULT_VERSIONS are pinnable; anything else (nodejs, python, ruby, ...)
+# is silently ignored because the target VM ships those pre-installed.
+_TOOL_VERSIONS_ALIASES: dict[str, str] = {
+    "golang": "go",
+    "go": "go",
+    "zig": "zig",
+    "terraform": "terraform",
+    "kubectl": "kubectl",
+}
+
+
+def _parse_tool_versions(text: str) -> dict[str, str]:
+    """Parse asdf/mise `.tool-versions` content into a pin dict.
+
+    Lines are `<plugin> <version> [fallback_version ...]`. `#` starts a
+    comment. Unknown plugins and malformed lines are silently dropped.
+    """
+    pins: dict[str, str] = {}
+    for raw in text.splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        key = _TOOL_VERSIONS_ALIASES.get(parts[0].lower())
+        if key is None:
+            continue
+        pins[key] = parts[1]
+    return pins
+
+
+def _read_single_version(path: Path) -> str | None:
+    try:
+        value = path.read_text().strip()
+    except OSError:
+        return None
+    return value or None
+
+
+def detect_versions(root: Path) -> dict[str, str]:
+    """Return tool pins discovered from version files at ``root``.
+
+    Only keys that appear in ``DEFAULT_VERSIONS`` are returned so the result
+    is safe to merge into the ``--versions`` dict. Dedicated single-tool
+    files (`.go-version`, `.terraform-version`) take precedence over
+    `.tool-versions` since asdf itself applies them at higher priority.
+
+    `.nvmrc` and `.python-version` are read (to signal awareness) but do not
+    produce pins — node and python ship pre-installed on the target VM and
+    are not in ``DEFAULT_VERSIONS``.
+    """
+    # Load DEFAULT_VERSIONS lazily to keep this module free of import-time
+    # coupling to sections.py.
+    from .sections import DEFAULT_VERSIONS
+
+    pins: dict[str, str] = {}
+
+    tool_versions = root / ".tool-versions"
+    if tool_versions.exists():
+        try:
+            pins.update(_parse_tool_versions(tool_versions.read_text()))
+        except OSError:
+            pass
+
+    go_version = _read_single_version(root / ".go-version")
+    if go_version is not None:
+        pins["go"] = go_version.split()[0]
+
+    tf_version = _read_single_version(root / ".terraform-version")
+    if tf_version is not None:
+        pins["terraform"] = tf_version.split()[0]
+
+    # .nvmrc / .python-version: touched for awareness, no pin emitted.
+    (root / ".nvmrc").exists()
+    (root / ".python-version").exists()
+
+    return {k: v for k, v in pins.items() if k in DEFAULT_VERSIONS}

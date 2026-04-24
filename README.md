@@ -65,19 +65,19 @@ uvx ccweb init --skills ""                        # Disable skills wiring
 
 Pass `auto` to either flag to install only what the repo actually needs. Detection inspects the project root for marker files:
 
-| Toolchain | Markers |
-| --- | --- |
-| `node` | `package.json`, `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock` |
-| `python` | `pyproject.toml`, `requirements.txt`, `setup.py`, `Pipfile`, `uv.lock` |
-| `go` | `go.mod` |
-| `rust` | `Cargo.toml` |
-| `ruby` | `Gemfile`, `*.gemspec` |
-| `java` | `pom.xml`, `build.gradle`, `build.gradle.kts` |
-| `deno` | `deno.json`, `deno.jsonc` |
-| `elixir` | `mix.exs` |
-| `zig` | `build.zig`, `build.zig.zon` |
-| `dotnet` | `*.csproj`, `*.fsproj`, `*.sln` |
-| `php` | `composer.json` |
+| Toolchain | Markers                                                                        |
+| --------- | ------------------------------------------------------------------------------ |
+| `node`    | `package.json`, `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock` |
+| `python`  | `pyproject.toml`, `requirements.txt`, `setup.py`, `Pipfile`, `uv.lock`         |
+| `go`      | `go.mod`                                                                       |
+| `rust`    | `Cargo.toml`                                                                   |
+| `ruby`    | `Gemfile`, `*.gemspec`                                                         |
+| `java`    | `pom.xml`, `build.gradle`, `build.gradle.kts`                                  |
+| `deno`    | `deno.json`, `deno.jsonc`                                                      |
+| `elixir`  | `mix.exs`                                                                      |
+| `zig`     | `build.zig`, `build.zig.zon`                                                   |
+| `dotnet`  | `*.csproj`, `*.fsproj`, `*.sln`                                                |
+| `php`     | `composer.json`                                                                |
 
 Extras are detected from lockfiles, `Dockerfile` / `docker-compose.yml`, `playwright`/`puppeteer` in `package.json`, `[tool.uv]` in `pyproject.toml`, and `postgres`/`redis` images referenced in compose files.
 
@@ -87,12 +87,23 @@ The `cloud` extra (aws, gcloud, terraform, kubectl, helm) is detected from any o
 
 Override any of the baked-in versions with `--versions KEY=VALUE` (comma-separated for multiple). Unspecified tools use the defaults in `DEFAULT_VERSIONS`.
 
-Valid keys: `go`, `zig`, `gh`, `duckdb`, `yq`, `dotnet_channel`.
+Valid keys: `go`, `zig`, `gh`, `duckdb`, `yq`, `dotnet_channel`, `terraform`, `kubectl`.
 
 ```
 uvx ccweb init --versions go=1.23.0
 uvx ccweb init --versions go=1.23.0,gh=2.74.1,dotnet_channel=LTS
 ```
+
+Pins are also auto-detected from common version files at the project root — no flag required:
+
+| File                        | Source of pin                                                         |
+| --------------------------- | --------------------------------------------------------------------- |
+| `.tool-versions`            | asdf/mise entries for `golang`/`go`, `zig`, `terraform`, `kubectl`    |
+| `.go-version`               | Go (takes precedence over `.tool-versions`)                           |
+| `.terraform-version`        | Terraform (takes precedence over `.tool-versions`)                    |
+| `.nvmrc`, `.python-version` | Read but ignored — node and python are pre-installed and not pinnable |
+
+Explicit `--versions` entries always win over auto-detected pins, per key.
 
 ### Environment variables
 
