@@ -11,7 +11,7 @@ import textwrap
 from pathlib import Path
 
 from . import __version__
-from .detect import detect_extras, detect_toolchains
+from .detect import detect_extras, detect_toolchains, detect_versions
 from .sections import (
     ALL_EXTRAS,
     ALL_TOOLCHAINS,
@@ -110,7 +110,10 @@ def cmd_init(args: argparse.Namespace) -> None:
     project_root = Path.cwd()
     toolchains = _resolve_toolchains(args.toolchains, project_root)
     extras = _resolve_extras(args.extras, project_root)
-    versions = _parse_versions(args.versions)
+    explicit_versions = _parse_versions(args.versions)
+    auto_versions = detect_versions(project_root)
+    # Explicit --versions always wins over auto-detected pins (per key).
+    versions = {**auto_versions, **explicit_versions}
     scripts_dir = args.scripts_dir
     skills_dir = (args.skills).strip().strip("/")
     force = args.force
@@ -137,7 +140,13 @@ def cmd_init(args: argparse.Namespace) -> None:
     if env_file:
         print(f"Env file:     {env_file}")
     if versions:
-        pins = ", ".join(f"{k}={v}" for k, v in sorted(versions.items()))
+
+        def _fmt_pin(k: str, v: str) -> str:
+            if k in explicit_versions:
+                return f"{k}={v}"
+            return f"{k}={v} (auto)"
+
+        pins = ", ".join(_fmt_pin(k, v) for k, v in sorted(versions.items()))
         print(f"Versions:     {pins}")
     if dry_run:
         print("Mode:         dry-run (no files written)")
@@ -483,6 +492,18 @@ Version pinning (--versions KEY=VALUE,...):
     --versions terraform=1.9.8,kubectl=1.31.2
 
   Valid keys: go, zig, gh, duckdb, yq, dotnet_channel, terraform, kubectl.
+
+  Auto-detection: if the project root contains any of these version files,
+  pins are picked up automatically (no flag needed):
+    .tool-versions       asdf/mise — lines like `golang 1.22.0`, `zig 0.14.0`,
+                         `terraform 1.9.8`, `kubectl 1.31.2`. Lines for tools
+                         that aren't pinnable (nodejs, python, ruby, ...) are
+                         ignored because those ship pre-installed on the VM.
+    .go-version          single-line Go version (wins over .tool-versions).
+    .terraform-version   single-line Terraform version (wins over .tool-versions).
+    .nvmrc, .python-version  read but ignored — no pinnable key.
+
+  Explicit --versions entries always override auto-detected pins per key.
 
 How it works at runtime:
   1. User opens a Claude Code web session on a repo that has ccweb scripts.
