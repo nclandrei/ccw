@@ -397,15 +397,20 @@ What ccweb init generates:
   scripts/post-tool-use.sh     PostToolUse hook — runs after every Edit/Write.
                                Reads the edited file path from the hook payload
                                and dispatches to the matching formatter:
-                                 ruff       → .py
-                                 gofmt      → .go
-                                 rustfmt    → .rs
-                                 zig fmt    → .zig
-                                 mix format → .ex, .exs
-                                 shfmt      → .sh, .bash
-                                 prettier   → .js/.ts/.json/.md/.css/.yaml/...
-                                              (falls back to `deno fmt` when
-                                              prettier is unavailable)
+                                 ruff               → .py
+                                 gofmt              → .go
+                                 rustfmt            → .rs
+                                 zig fmt            → .zig
+                                 mix format         → .ex, .exs
+                                 shfmt              → .sh, .bash
+                                 clang-format       → .c/.h/.cc/.cpp/.hpp/.m/...
+                                 rubocop            → .rb
+                                 google-java-format → .java
+                                 php-cs-fixer       → .php
+                                 terraform fmt      → .tf, .tfvars
+                                 prettier           → .js/.ts/.json/.md/.css/...
+                                                      (falls back to `deno fmt`
+                                                      when prettier is missing)
                                Each call is guarded by `command -v`, and the
                                hook always exits 0 so a missing or failing
                                formatter never blocks the agent.

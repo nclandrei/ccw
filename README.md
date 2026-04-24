@@ -133,6 +133,31 @@ discovers them at the user level across every session on the VM. Pass
 <repo>/<DIR>/my-skill/reference.md
 ```
 
+### Auto-formatting on Edit/Write
+
+`ccweb init` also generates `scripts/post-tool-use.sh` and wires it as a
+PostToolUse hook in `.claude/settings.json` (matcher: `Edit|Write|MultiEdit`).
+After every file edit, the hook reads the file path from Claude's hook payload
+and runs the matching formatter:
+
+| Formatter                             | Extensions                                                                                                                |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `ruff format` + `ruff check --fix`    | `.py`                                                                                                                     |
+| `gofmt`                               | `.go`                                                                                                                     |
+| `rustfmt`                             | `.rs`                                                                                                                     |
+| `zig fmt`                             | `.zig`                                                                                                                    |
+| `mix format`                          | `.ex`, `.exs`                                                                                                             |
+| `shfmt`                               | `.sh`, `.bash`                                                                                                            |
+| `clang-format`                        | `.c`, `.h`, `.cc`, `.cpp`, `.cxx`, `.hpp`, `.hh`, `.hxx`, `.m`, `.mm`                                                     |
+| `rubocop -A`                          | `.rb`                                                                                                                     |
+| `google-java-format`                  | `.java`                                                                                                                   |
+| `php-cs-fixer`                        | `.php`                                                                                                                    |
+| `terraform fmt`                       | `.tf`, `.tfvars`                                                                                                          |
+| `prettier` (falls back to `deno fmt`) | `.js`, `.jsx`, `.ts`, `.tsx`, `.mjs`, `.cjs`, `.json`, `.jsonc`, `.md`, `.mdx`, `.css`, `.scss`, `.html`, `.yaml`, `.yml` |
+
+Each formatter is guarded by `command -v`, and the hook always exits 0 so a
+missing or failing formatter never blocks the agent.
+
 ## How it works
 
 1. **`setup.sh`** runs once when a new VM is created. Installs system packages, toolchains, and persists environment variables to `/etc/environment`.
@@ -141,7 +166,9 @@ discovers them at the user level across every session on the VM. Pass
 
 3. **`diagnose.sh`** checks what's installed, what's missing, and what's misconfigured.
 
-4. **`.claude/settings.json`** wires the SessionStart hook so `session-start.sh` runs automatically.
+4. **`post-tool-use.sh`** runs after every Edit/Write/MultiEdit and formats the changed file.
+
+5. **`.claude/settings.json`** wires both hooks so they run automatically.
 
 ## License
 

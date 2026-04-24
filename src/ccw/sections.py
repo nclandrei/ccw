@@ -1159,14 +1159,19 @@ def build_post_tool_use_sh() -> str:
     so a missing formatter never blocks the agent.
 
     Covered languages:
-      ruff          → .py
-      gofmt         → .go
-      rustfmt       → .rs
-      zig fmt       → .zig
-      mix format    → .ex, .exs
-      shfmt         → .sh, .bash
-      prettier      → .js/.ts/.json/.md/.css/.yaml/.html/...
-                      (falls back to `deno fmt` when prettier is missing)
+      ruff              → .py
+      gofmt             → .go
+      rustfmt           → .rs
+      zig fmt           → .zig
+      mix format        → .ex, .exs
+      shfmt             → .sh, .bash
+      clang-format      → .c, .h, .cc, .cpp, .cxx, .hpp, .hh, .hxx, .m, .mm
+      rubocop           → .rb
+      google-java-format → .java
+      php-cs-fixer      → .php
+      terraform fmt     → .tf, .tfvars
+      prettier          → .js/.ts/.json/.md/.css/.yaml/.html/...
+                          (falls back to `deno fmt` when prettier is missing)
     """
     return r"""#!/bin/bash
 # PostToolUse hook — auto-runs project formatters/linters after Edit/Write.
@@ -1219,6 +1224,31 @@ case "$FILE" in
   *.sh|*.bash)
     if command -v shfmt &>/dev/null; then
       shfmt -w "$FILE" >/dev/null 2>&1 || true
+    fi
+    ;;
+  *.c|*.h|*.cc|*.cpp|*.cxx|*.hpp|*.hh|*.hxx|*.m|*.mm)
+    if command -v clang-format &>/dev/null; then
+      clang-format -i "$FILE" >/dev/null 2>&1 || true
+    fi
+    ;;
+  *.rb)
+    if command -v rubocop &>/dev/null; then
+      rubocop -A "$FILE" >/dev/null 2>&1 || true
+    fi
+    ;;
+  *.java)
+    if command -v google-java-format &>/dev/null; then
+      google-java-format -i "$FILE" >/dev/null 2>&1 || true
+    fi
+    ;;
+  *.php)
+    if command -v php-cs-fixer &>/dev/null; then
+      php-cs-fixer fix --quiet "$FILE" >/dev/null 2>&1 || true
+    fi
+    ;;
+  *.tf|*.tfvars)
+    if command -v terraform &>/dev/null; then
+      terraform fmt "$FILE" >/dev/null 2>&1 || true
     fi
     ;;
   *.js|*.jsx|*.ts|*.tsx|*.mjs|*.cjs|*.json|*.jsonc|*.md|*.mdx|*.css|*.scss|*.html|*.yaml|*.yml)
