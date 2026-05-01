@@ -6,7 +6,10 @@
       "Write",
       "Edit",
       "Glob",
-      "Grep"
+      "Grep",
+      "WebFetch",
+      "WebSearch",
+      "mcp__github__*"
     ]
   },
   "hooks": {
@@ -32,5 +35,13 @@
         ]
       }
     ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "network": {
+      "allowedDomains": [
+        "*"
+      ]
+    }
   }
 }
