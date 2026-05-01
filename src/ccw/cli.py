@@ -416,8 +416,36 @@ What ccweb init generates:
                                formatter never blocks the agent.
   .claude/settings.json        Wires session-start.sh as a SessionStart hook
                                and post-tool-use.sh as a PostToolUse hook
-                               (matcher: Edit|Write|MultiEdit). Merges with
-                               existing settings, never clobbers.
+                               (matcher: Edit|Write|MultiEdit). Also writes
+                               a permissive default for network and tool use:
+                                 sandbox.network.allowedDomains = ["*"]
+                                 permissions.allow includes WebFetch,
+                                 WebSearch, and mcp__github__* so the agent
+                                 can hit the network and call GitHub MCP
+                                 tools without prompts.
+                               Merges with existing settings, never clobbers
+                               a user-defined sandbox block or custom allow
+                               entries.
+
+Network & GitHub access (what ccweb can and cannot configure):
+  Network:   ccweb sets sandbox.network.allowedDomains to ["*"] in
+             .claude/settings.json, which gives the agent unrestricted
+             outbound network access on the web VM. To tighten it, edit the
+             generated sandbox block (or set your own before running init —
+             ccweb will not overwrite an existing sandbox config).
+
+  GitHub repository scope is NOT something a repo's settings.json can
+  override — it is enforced by the claude.ai/code environment template and
+  by the Claude GitHub App's installation scope. To get "all repositories"
+  access for every Claude Code web session:
+    1. Visit https://github.com/settings/installations, click Configure
+       on the Claude GitHub App, and set Repository access to
+       "All repositories".
+    2. At claude.ai/code, when creating an environment/agent, do not pin
+       it to a single repo unless you want to.
+  ccweb pre-allows mcp__github__* in permissions.allow so the GitHub MCP
+  tools never prompt — but the system prompt restriction set by the
+  environment template still applies until you do steps 1 and 2 above.
 
 Toolchains (what each installs):
   node       Pre-installed on the VM. ccweb wires dependency install from
