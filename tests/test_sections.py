@@ -234,6 +234,70 @@ class CloudExtraTests(unittest.TestCase):
             self.assertNotIn(f"_check {tool}", diagnose_sh)
 
 
+class LiquibaseExtraTests(unittest.TestCase):
+    """The 'liquibase' extra ships the Liquibase CLI for DB migrations."""
+
+    def test_liquibase_in_all_extras(self):
+        self.assertIn("liquibase", ALL_EXTRAS)
+
+    def test_liquibase_not_installed_without_extra(self):
+        setup_sh = build_setup_sh(set(), set())
+        self.assertNotIn("liquibase/liquibase/releases", setup_sh)
+        self.assertNotIn("Installing Liquibase", setup_sh)
+
+    def test_liquibase_installs_from_github_release(self):
+        setup_sh = build_setup_sh(set(), {"liquibase"})
+        self.assertIn("liquibase/liquibase/releases", setup_sh)
+        self.assertIn("_installed liquibase", setup_sh)
+
+    def test_liquibase_symlinked_to_usr_local_bin(self):
+        # /usr/local/bin/liquibase makes the CLI findable on PATH without
+        # extra env vars in Claude's Bash tool.
+        setup_sh = build_setup_sh(set(), {"liquibase"})
+        self.assertIn("/usr/local/bin/liquibase", setup_sh)
+
+    def test_liquibase_summary_listed_when_enabled(self):
+        setup_sh = build_setup_sh(set(), {"liquibase"})
+        self.assertIn("liquibase:", setup_sh)
+
+    def test_liquibase_summary_omitted_when_disabled(self):
+        setup_sh = build_setup_sh(set(), set())
+        self.assertNotIn("liquibase:", setup_sh)
+
+    def test_diagnose_checks_liquibase_when_enabled(self):
+        diagnose_sh = build_diagnose_sh(set(), {"liquibase"})
+        self.assertIn("Liquibase", diagnose_sh)
+        self.assertIn("liquibase --version", diagnose_sh)
+
+    def test_diagnose_skips_liquibase_when_disabled(self):
+        diagnose_sh = build_diagnose_sh(set(), set())
+        self.assertNotIn("Liquibase", diagnose_sh)
+
+    def test_liquibase_version_can_be_pinned(self):
+        setup_sh = build_setup_sh(set(), {"liquibase"}, {"liquibase": "4.31.0"})
+        self.assertIn('LIQUIBASE_VERSION="4.31.0"', setup_sh)
+
+
+class CSharpierInstallTests(unittest.TestCase):
+    """When the dotnet toolchain is enabled, csharpier should install as a
+    dotnet global tool so the C# formatter works in the PostToolUse hook."""
+
+    def test_csharpier_installed_with_dotnet(self):
+        setup_sh = build_setup_sh({"dotnet"}, set())
+        self.assertIn("csharpier", setup_sh)
+        self.assertIn("dotnet tool install", setup_sh)
+
+    def test_csharpier_not_installed_without_dotnet(self):
+        setup_sh = build_setup_sh(set(), set())
+        self.assertNotIn("csharpier", setup_sh)
+
+    def test_dotnet_tools_dir_on_path(self):
+        # dotnet global tools land in /root/.dotnet/tools — must be on PATH
+        # so csharpier is callable from the PostToolUse hook.
+        setup_sh = build_setup_sh({"dotnet"}, set())
+        self.assertIn("/root/.dotnet/tools", setup_sh)
+
+
 class FullBuildSmokeTest(unittest.TestCase):
     """Build with every toolchain and extra — should not raise or produce an empty script."""
 

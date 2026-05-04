@@ -137,6 +137,31 @@ class DetectToolchainsTests(unittest.TestCase):
             _touch(root, "Solution.sln")
             self.assertIn("dotnet", detect_toolchains(root))
 
+    def test_vbproj_detects_dotnet(self):
+        with _TmpRoot() as root:
+            _touch(root, "Legacy.vbproj")
+            self.assertIn("dotnet", detect_toolchains(root))
+
+    def test_nuget_config_detects_dotnet(self):
+        with _TmpRoot() as root:
+            _touch(root, "nuget.config")
+            self.assertIn("dotnet", detect_toolchains(root))
+
+    def test_global_json_detects_dotnet(self):
+        with _TmpRoot() as root:
+            _touch(root, "global.json")
+            self.assertIn("dotnet", detect_toolchains(root))
+
+    def test_directory_build_props_detects_dotnet(self):
+        with _TmpRoot() as root:
+            _touch(root, "Directory.Build.props")
+            self.assertIn("dotnet", detect_toolchains(root))
+
+    def test_directory_packages_props_detects_dotnet(self):
+        with _TmpRoot() as root:
+            _touch(root, "Directory.Packages.props")
+            self.assertIn("dotnet", detect_toolchains(root))
+
     def test_composer_json_detects_php(self):
         with _TmpRoot() as root:
             _touch(root, "composer.json")
@@ -275,6 +300,56 @@ class DetectExtrasTests(unittest.TestCase):
         with _TmpRoot() as root:
             _touch(root, "config.yaml", "settings.yml")
             self.assertNotIn("cloud", detect_extras(root))
+
+    # ── Liquibase ────────────────────────────────────────────────────────────
+
+    def test_liquibase_properties_detects_liquibase(self):
+        with _TmpRoot() as root:
+            _touch(root, "liquibase.properties")
+            self.assertIn("liquibase", detect_extras(root))
+
+    def test_liquibase_flowfile_detects_liquibase(self):
+        with _TmpRoot() as root:
+            _touch(root, "liquibase.flowfile.yaml")
+            self.assertIn("liquibase", detect_extras(root))
+
+    def test_root_changelog_master_yaml_detects_liquibase(self):
+        with _TmpRoot() as root:
+            _touch(root, "db.changelog-master.yaml")
+            self.assertIn("liquibase", detect_extras(root))
+
+    def test_root_changelog_master_xml_detects_liquibase(self):
+        with _TmpRoot() as root:
+            _touch(root, "db.changelog-master.xml")
+            self.assertIn("liquibase", detect_extras(root))
+
+    def test_changelog_in_sql_subdir_detects_liquibase(self):
+        with _TmpRoot() as root:
+            _touch(root, "sql/db.changelog-master.yaml")
+            self.assertIn("liquibase", detect_extras(root))
+
+    def test_changelog_in_db_changelog_subdir_detects_liquibase(self):
+        with _TmpRoot() as root:
+            _touch(root, "db/changelog/db.changelog-master.yaml")
+            self.assertIn("liquibase", detect_extras(root))
+
+    def test_changelog_in_migrations_subdir_detects_liquibase(self):
+        with _TmpRoot() as root:
+            _touch(root, "migrations/db.changelog-master.yaml")
+            self.assertIn("liquibase", detect_extras(root))
+
+    def test_plain_yaml_does_not_detect_liquibase(self):
+        # A bare yaml file at root shouldn't imply liquibase
+        with _TmpRoot() as root:
+            _touch(root, "config.yaml", "docker-compose.yml")
+            self.assertNotIn("liquibase", detect_extras(root))
+
+    def test_empty_sql_dir_does_not_detect_liquibase(self):
+        # An empty sql/ directory shouldn't be enough — we need an actual
+        # changelog file inside it.
+        with _TmpRoot() as root:
+            _touch(root, "sql/.gitkeep")
+            self.assertNotIn("liquibase", detect_extras(root))
 
 
 if __name__ == "__main__":

@@ -32,13 +32,20 @@ _TOOLCHAIN_MARKERS: dict[str, tuple[str, ...]] = {
     "deno": ("deno.json", "deno.jsonc"),
     "elixir": ("mix.exs",),
     "zig": ("build.zig", "build.zig.zon"),
+    "dotnet": (
+        "nuget.config",
+        "NuGet.Config",
+        "global.json",
+        "Directory.Build.props",
+        "Directory.Packages.props",
+    ),
     "php": ("composer.json",),
 }
 
 # Toolchain → list of glob patterns (used when the marker filename varies).
 _TOOLCHAIN_GLOBS: dict[str, tuple[str, ...]] = {
     "ruby": ("*.gemspec",),
-    "dotnet": ("*.csproj", "*.fsproj", "*.sln"),
+    "dotnet": ("*.csproj", "*.fsproj", "*.vbproj", "*.sln"),
 }
 
 
@@ -119,6 +126,9 @@ def detect_extras(root: Path) -> set[str]:
     if _detect_cloud(root):
         found.add("cloud")
 
+    if _detect_liquibase(root):
+        found.add("liquibase")
+
     return found
 
 
@@ -159,6 +169,62 @@ def _detect_cloud(root: Path) -> bool:
     for d in _CLOUD_DIRS:
         if (root / d).is_dir():
             return True
+    return False
+
+
+# ── Liquibase detection ──────────────────────────────────────────────────────
+# Liquibase config and changelog filenames. The root-level files
+# (`liquibase.properties`, `liquibase.flowfile.yaml`, etc.) are unambiguous,
+# while changelog files are commonly placed under a `sql/`, `db/`, `db/changelog/`,
+# `liquibase/`, or `migrations/` subdirectory — we look there too without
+# recursing further to keep detection fast and predictable.
+_LIQUIBASE_ROOT_FILES: tuple[str, ...] = (
+    "liquibase.properties",
+    "liquibase.flowfile.yaml",
+    "liquibase.flowfile.yml",
+    "liquibase.docker-compose.yaml",
+    "liquibase.docker-compose.yml",
+)
+
+_LIQUIBASE_CHANGELOG_NAMES: tuple[str, ...] = (
+    "db.changelog-master.yaml",
+    "db.changelog-master.yml",
+    "db.changelog-master.xml",
+    "db.changelog-master.json",
+    "db.changelog-master.sql",
+    "changelog-master.yaml",
+    "changelog-master.yml",
+    "changelog-master.xml",
+)
+
+# Subdirectories commonly used to hold the changelog tree.
+_LIQUIBASE_SUBDIRS: tuple[str, ...] = (
+    "sql",
+    "db",
+    "db/changelog",
+    "liquibase",
+    "migrations",
+    "changelog",
+)
+
+
+def _detect_liquibase(root: Path) -> bool:
+    # Root-level config / flowfile filenames are unambiguous.
+    for name in _LIQUIBASE_ROOT_FILES:
+        if (root / name).exists():
+            return True
+    # Changelog file at the root.
+    for name in _LIQUIBASE_CHANGELOG_NAMES:
+        if (root / name).exists():
+            return True
+    # Or in a conventional subdirectory.
+    for sub in _LIQUIBASE_SUBDIRS:
+        d = root / sub
+        if not d.is_dir():
+            continue
+        for name in _LIQUIBASE_CHANGELOG_NAMES:
+            if (d / name).exists():
+                return True
     return False
 
 

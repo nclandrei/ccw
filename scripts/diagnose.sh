@@ -80,6 +80,11 @@ _check kubectl
 _check helm
 
 echo ""
+echo "Database Migrations"
+command -v liquibase &>/dev/null && ok "Liquibase: $(liquibase --version 2>&1 | head -1)" || fail "Liquibase: not installed"
+command -v java &>/dev/null && ok "Java (required by liquibase): $(java -version 2>&1 | head -1)" || warn "Java not on PATH — liquibase needs a JRE"
+
+echo ""
 echo "Browser Automation"
 CHROMIUM=$(find /root/.cache/ms-playwright -name "chrome" -path "*/chrome-linux/chrome" 2>/dev/null | head -1)
 [ -n "$CHROMIUM" ] && ok "Playwright Chromium: $CHROMIUM" || fail "Playwright Chromium: not found"

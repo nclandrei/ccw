@@ -336,11 +336,13 @@ Commands:
                                (package.json, go.mod, Cargo.toml, etc.) and
                                install only what the repo actually uses.
   ccweb init --extras EX       Comma-separated: uv,pnpm,yarn,bun,browser,
-                               postgres,redis,docker,cloud (default: all).
-                               Use 'auto' to detect from lockfiles and other
-                               markers (pnpm-lock.yaml, Dockerfile, uv.lock,
-                               playwright in package.json, postgres/redis in
-                               docker-compose, etc.).
+                               postgres,redis,docker,cloud,liquibase
+                               (default: all). Use 'auto' to detect from
+                               lockfiles and other markers (pnpm-lock.yaml,
+                               Dockerfile, uv.lock, playwright in
+                               package.json, postgres/redis in
+                               docker-compose, db.changelog-master.* for
+                               liquibase, etc.).
   ccweb init --scripts-dir D   Output directory for scripts (default: scripts)
   ccweb init --skills DIR      Path (repo-relative) to a directory of Claude
                                Code skills. Each subdirectory containing
@@ -349,7 +351,7 @@ Commands:
                                Pass --skills "" to disable.
   ccweb init --versions PINS   Pin tool versions, e.g. go=1.23.0,zig=0.14.0.
                                Valid keys: go, zig, gh, duckdb, yq,
-                               dotnet_channel, terraform, kubectl.
+                               dotnet_channel, terraform, kubectl, liquibase.
                                Unspecified tools use defaults.
   ccweb init --env-file PATH   Repo-relative path to an env schema file
                                (default: auto-detect .env.example or
@@ -408,6 +410,9 @@ What ccweb init generates:
                                  google-java-format → .java
                                  php-cs-fixer       → .php
                                  terraform fmt      → .tf, .tfvars
+                                 csharpier / dotnet format
+                                                    → .cs/.csproj/.fs/.fsproj/
+                                                      .vb/.vbproj
                                  prettier           → .js/.ts/.json/.md/.css/...
                                                       (falls back to `deno fmt`
                                                       when prettier is missing)
@@ -490,6 +495,11 @@ Extras (what each installs):
              (Google Cloud SDK), terraform, kubectl, and helm. Authentication
              still relies on env vars / credentials set via the claude.ai
              Environment Variables UI; ccweb does not manage credentials.
+  liquibase  Installs the Liquibase CLI for declarative database schema
+             migrations. Reads YAML/XML/JSON/SQL changelogs and applies them
+             against any JDBC-supported database. Requires Java at runtime —
+             enable the `java` toolchain (or rely on the pre-installed JRE)
+             when this extra is used.
 
 Skills (--skills DIR, default: .claude/skills):
   Claude Code auto-discovers skills from ~/.claude/skills/<name>/SKILL.md.
@@ -524,7 +534,8 @@ Version pinning (--versions KEY=VALUE,...):
     --versions dotnet_channel=LTS
     --versions terraform=1.9.8,kubectl=1.31.2
 
-  Valid keys: go, zig, gh, duckdb, yq, dotnet_channel, terraform, kubectl.
+  Valid keys: go, zig, gh, duckdb, yq, dotnet_channel, terraform, kubectl,
+  liquibase.
 
   Auto-detection: if the project root contains any of these version files,
   pins are picked up automatically (no flag needed):
