@@ -51,7 +51,7 @@ _persist PUPPETEER_SKIP_DOWNLOAD            "true"
 _persist GOPATH                             "/root/go"
 _persist DOTNET_ROOT                        "/root/.dotnet"
 
-NEW_PATH="/usr/local/go/bin:/root/go/bin:/root/.dotnet"
+NEW_PATH="/usr/local/go/bin:/root/go/bin:/root/.dotnet:/root/.dotnet/tools"
 [ -n "${CARGO_BIN:-}" ] && NEW_PATH="${CARGO_BIN}:${NEW_PATH}"
 [ -n "${UV_BIN:-}" ] && NEW_PATH="${UV_BIN}:${NEW_PATH}"
 [ -n "${DENO_BIN:-}" ] && NEW_PATH="${DENO_BIN}:${NEW_PATH}"
@@ -62,7 +62,7 @@ if [ -z "${CLAUDE_ENV_FILE:-}" ]; then
   cat > /etc/profile.d/claude-code-env.sh <<'PROFILE'
 export GOPATH=/root/go
 export DOTNET_ROOT=/root/.dotnet
-export PATH="/root/.cargo/bin:/root/.local/bin:/root/.deno/bin:/usr/local/go/bin:/root/go/bin:/root/.dotnet:$PATH"
+export PATH="/root/.cargo/bin:/root/.local/bin:/root/.deno/bin:/usr/local/go/bin:/root/go/bin:/root/.dotnet:/root/.dotnet/tools:$PATH"
 PROFILE
   if [ -n "${PLAYWRIGHT_CHROMIUM:-}" ]; then
     cat >> /etc/profile.d/claude-code-env.sh <<CHROMIUM

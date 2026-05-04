@@ -82,6 +82,14 @@ class BuildPostToolUseTests(unittest.TestCase):
         self.assertIn(".tf", self.script)
         self.assertIn(".tfvars", self.script)
 
+    def test_runs_csharpier_for_dotnet_files(self):
+        # csharpier is the preferred C#/F#/VB formatter; the dotnet CLI's
+        # `dotnet format` is the fallback.
+        self.assertIn("csharpier", self.script)
+        self.assertIn("dotnet format", self.script)
+        for ext in (".cs", ".csproj", ".fs", ".fsproj", ".vb", ".vbproj"):
+            self.assertIn(ext, self.script, f"dotnet formatter should handle {ext}")
+
     def test_deno_fmt_fallback_for_web_files(self):
         # If prettier is not available, deno fmt handles JS/TS/JSON/MD too.
         self.assertIn("deno fmt", self.script)

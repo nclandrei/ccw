@@ -13,6 +13,7 @@ DEFAULT_VERSIONS: dict[str, str] = {
     "dotnet_channel": "STS",
     "terraform": "1.9.8",
     "kubectl": "1.31.2",
+    "liquibase": "4.30.0",
 }
 
 
@@ -273,6 +274,15 @@ if ! _installed dotnet; then
   [ -f /root/.dotnet/dotnet ] && ln -sf /root/.dotnet/dotnet /usr/local/bin/dotnet
   _timer ".NET" "$t"
 fi
+
+# csharpier — opinionated C# formatter, installed as a dotnet global tool
+if _installed dotnet && ! _installed csharpier; then
+  t=$(date +%s)
+  echo "Installing csharpier..."
+  dotnet tool install --global csharpier 2>/dev/null || true
+  [ -f /root/.dotnet/tools/csharpier ] && ln -sf /root/.dotnet/tools/csharpier /usr/local/bin/csharpier
+  _timer "csharpier" "$t"
+fi
 """
 
 
@@ -291,6 +301,35 @@ if ! _installed php; then
     curl -fsSL https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer 2>/dev/null || true
   fi
   _timer "PHP" "$t"
+fi
+"""
+
+
+def setup_liquibase(versions: dict[str, str]) -> str:
+    """Install Liquibase, the Java-based database schema migration tool.
+
+    Liquibase is distributed as a tar.gz on GitHub releases. The bundled
+    `liquibase` shell script needs Java on PATH at runtime — diagnose.sh
+    will warn if Java is missing.
+    """
+    lb_version = _v(versions, "liquibase")
+    return f"""\
+# ── Liquibase ───────────────────────────────────────────────────────────────
+if ! _installed liquibase; then
+  t=$(date +%s)
+  LIQUIBASE_VERSION="{lb_version}"
+  echo "Installing Liquibase ${{LIQUIBASE_VERSION}}..."
+  mkdir -p /opt/liquibase
+  if curl -fsSL "https://github.com/liquibase/liquibase/releases/download/v${{LIQUIBASE_VERSION}}/liquibase-${{LIQUIBASE_VERSION}}.tar.gz" \\
+       -o /tmp/liquibase.tar.gz \\
+     && tar -C /opt/liquibase -xzf /tmp/liquibase.tar.gz \\
+     && rm -f /tmp/liquibase.tar.gz ; then
+    chmod +x /opt/liquibase/liquibase
+    ln -sf /opt/liquibase/liquibase /usr/local/bin/liquibase
+  else
+    echo "  Warning: Liquibase download failed (non-fatal)"
+  fi
+  _timer "Liquibase ${{LIQUIBASE_VERSION}}" "$t"
 fi
 """
 
@@ -481,7 +520,7 @@ def setup_env_block(toolchains: set[str], extras: set[str]) -> str:
     if "go" in toolchains:
         path_parts.extend(["/usr/local/go/bin", "/root/go/bin"])
     if "dotnet" in toolchains:
-        path_parts.append("/root/.dotnet")
+        path_parts.extend(["/root/.dotnet", "/root/.dotnet/tools"])
 
     if path_parts:
         path_str = ":".join(path_parts)
@@ -569,6 +608,8 @@ def setup_summary(toolchains: set[str], extras: set[str]) -> str:
             )
         )
         checks.append(("helm", "helm version --short"))
+    if "liquibase" in extras:
+        checks.append(("liquibase", "liquibase --version 2>&1 | head -1"))
 
     for label, cmd in checks:
         lines.append(
@@ -601,6 +642,8 @@ def build_setup_sh(
         parts.append(setup_docker())
     if "cloud" in extras:
         parts.append(setup_cloud(versions))
+    if "liquibase" in extras:
+        parts.append(setup_liquibase(versions))
     if "go" in toolchains:
         parts.append(setup_go(versions))
     if "rust" in toolchains:
@@ -724,7 +767,7 @@ def session_persist_env(toolchains: set[str], extras: set[str]) -> str:
     if "go" in toolchains:
         path_parts.append("/usr/local/go/bin:/root/go/bin")
     if "dotnet" in toolchains:
-        path_parts.append("/root/.dotnet")
+        path_parts.extend(["/root/.dotnet", "/root/.dotnet/tools"])
     lines.append("")
     lines.append(f'NEW_PATH="{":".join(path_parts)}"' if path_parts else 'NEW_PATH=""')
     if "rust" in toolchains:
@@ -759,7 +802,7 @@ def session_persist_env(toolchains: set[str], extras: set[str]) -> str:
     if "go" in toolchains:
         fallback_path_parts.extend(["/usr/local/go/bin", "/root/go/bin"])
     if "dotnet" in toolchains:
-        fallback_path_parts.append("/root/.dotnet")
+        fallback_path_parts.extend(["/root/.dotnet", "/root/.dotnet/tools"])
     if fallback_path_parts:
         lines.append(f'export PATH="{":".join(fallback_path_parts)}:$PATH"')
 
@@ -1072,6 +1115,17 @@ def build_diagnose_sh(
             ]
         )
 
+    if "liquibase" in extras:
+        lines.extend(
+            [
+                "",
+                'echo ""',
+                'echo "Database Migrations"',
+                'command -v liquibase &>/dev/null && ok "Liquibase: $(liquibase --version 2>&1 | head -1)" || fail "Liquibase: not installed"',
+                'command -v java &>/dev/null && ok "Java (required by liquibase): $(java -version 2>&1 | head -1)" || warn "Java not on PATH — liquibase needs a JRE"',
+            ]
+        )
+
     if "browser" in extras:
         lines.extend(
             [
@@ -1170,6 +1224,7 @@ def build_post_tool_use_sh() -> str:
       google-java-format → .java
       php-cs-fixer      → .php
       terraform fmt     → .tf, .tfvars
+      csharpier / dotnet format → .cs, .csproj, .fs, .fsproj, .vb, .vbproj
       prettier          → .js/.ts/.json/.md/.css/.yaml/.html/...
                           (falls back to `deno fmt` when prettier is missing)
     """
@@ -1251,6 +1306,14 @@ case "$FILE" in
       terraform fmt "$FILE" >/dev/null 2>&1 || true
     fi
     ;;
+  *.cs|*.csproj|*.fs|*.fsproj|*.vb|*.vbproj)
+    if command -v csharpier &>/dev/null; then
+      csharpier format "$FILE" >/dev/null 2>&1 \
+        || csharpier "$FILE" >/dev/null 2>&1 || true
+    elif command -v dotnet &>/dev/null; then
+      dotnet format whitespace --include "$FILE" --no-restore >/dev/null 2>&1 || true
+    fi
+    ;;
   *.js|*.jsx|*.ts|*.tsx|*.mjs|*.cjs|*.json|*.jsonc|*.md|*.mdx|*.css|*.scss|*.html|*.yaml|*.yml)
     if command -v prettier &>/dev/null; then
       prettier --write --log-level=silent "$FILE" >/dev/null 2>&1 || true
@@ -1289,4 +1352,5 @@ ALL_EXTRAS = {
     "redis",
     "docker",
     "cloud",
+    "liquibase",
 }

@@ -57,7 +57,7 @@ uvx ccweb init --skills ""                        # Disable skills wiring
 
 ### Extras
 
-`uv`, `pnpm`, `yarn`, `bun`, `browser`, `postgres`, `redis`, `docker` — default: all
+`uv`, `pnpm`, `yarn`, `bun`, `browser`, `postgres`, `redis`, `docker`, `cloud`, `liquibase` — default: all
 
 `gh`, `duckdb`, `yq`, `sqlite3`, `jq`, `pandoc`, `shellcheck`, and friends are always installed — no flag needed.
 
@@ -76,18 +76,20 @@ Pass `auto` to either flag to install only what the repo actually needs. Detecti
 | `deno`    | `deno.json`, `deno.jsonc`                                                      |
 | `elixir`  | `mix.exs`                                                                      |
 | `zig`     | `build.zig`, `build.zig.zon`                                                   |
-| `dotnet`  | `*.csproj`, `*.fsproj`, `*.sln`                                                |
+| `dotnet`  | `*.csproj`, `*.fsproj`, `*.vbproj`, `*.sln`, `nuget.config`, `global.json`, `Directory.Build.props`, `Directory.Packages.props` |
 | `php`     | `composer.json`                                                                |
 
 Extras are detected from lockfiles, `Dockerfile` / `docker-compose.yml`, `playwright`/`puppeteer` in `package.json`, `[tool.uv]` in `pyproject.toml`, and `postgres`/`redis` images referenced in compose files.
 
 The `cloud` extra (aws, gcloud, terraform, kubectl, helm) is detected from any of: `*.tf` / `*.tfvars` at the root, a `terraform/` / `infra/` / `iac/` / `k8s/` / `kubernetes/` / `manifests/` directory, or a `Chart.yaml`, `helmfile.yaml`, `kubeconfig`, or `kustomization.yaml` file at the root.
 
+The `liquibase` extra is detected from `liquibase.properties`, `liquibase.flowfile.yaml`, or any `db.changelog-master.{yaml,yml,xml,json,sql}` / `changelog-master.{yaml,yml,xml}` file at the root or under a `sql/`, `db/`, `db/changelog/`, `liquibase/`, `migrations/`, or `changelog/` subdirectory.
+
 ### Version pinning
 
 Override any of the baked-in versions with `--versions KEY=VALUE` (comma-separated for multiple). Unspecified tools use the defaults in `DEFAULT_VERSIONS`.
 
-Valid keys: `go`, `zig`, `gh`, `duckdb`, `yq`, `dotnet_channel`, `terraform`, `kubectl`.
+Valid keys: `go`, `zig`, `gh`, `duckdb`, `yq`, `dotnet_channel`, `terraform`, `kubectl`, `liquibase`.
 
 ```
 uvx ccweb init --versions go=1.23.0
@@ -153,6 +155,7 @@ and runs the matching formatter:
 | `google-java-format`                  | `.java`                                                                                                                   |
 | `php-cs-fixer`                        | `.php`                                                                                                                    |
 | `terraform fmt`                       | `.tf`, `.tfvars`                                                                                                          |
+| `csharpier` (falls back to `dotnet format`) | `.cs`, `.csproj`, `.fs`, `.fsproj`, `.vb`, `.vbproj`                                                                |
 | `prettier` (falls back to `deno fmt`) | `.js`, `.jsx`, `.ts`, `.tsx`, `.mjs`, `.cjs`, `.json`, `.jsonc`, `.md`, `.mdx`, `.css`, `.scss`, `.html`, `.yaml`, `.yml` |
 
 Each formatter is guarded by `command -v`, and the hook always exits 0 so a

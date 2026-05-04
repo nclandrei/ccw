@@ -213,6 +213,24 @@ if ! _installed helm; then
   _timer "Helm" "$t"
 fi
 
+# ── Liquibase ───────────────────────────────────────────────────────────────
+if ! _installed liquibase; then
+  t=$(date +%s)
+  LIQUIBASE_VERSION="4.30.0"
+  echo "Installing Liquibase ${LIQUIBASE_VERSION}..."
+  mkdir -p /opt/liquibase
+  if curl -fsSL "https://github.com/liquibase/liquibase/releases/download/v${LIQUIBASE_VERSION}/liquibase-${LIQUIBASE_VERSION}.tar.gz" \
+       -o /tmp/liquibase.tar.gz \
+     && tar -C /opt/liquibase -xzf /tmp/liquibase.tar.gz \
+     && rm -f /tmp/liquibase.tar.gz ; then
+    chmod +x /opt/liquibase/liquibase
+    ln -sf /opt/liquibase/liquibase /usr/local/bin/liquibase
+  else
+    echo "  Warning: Liquibase download failed (non-fatal)"
+  fi
+  _timer "Liquibase ${LIQUIBASE_VERSION}" "$t"
+fi
+
 # ── Go ───────────────────────────────────────────────────────────────────────
 if ! _installed go; then
   t=$(date +%s)
@@ -281,6 +299,15 @@ if ! _installed dotnet; then
   _timer ".NET" "$t"
 fi
 
+# csharpier — opinionated C# formatter, installed as a dotnet global tool
+if _installed dotnet && ! _installed csharpier; then
+  t=$(date +%s)
+  echo "Installing csharpier..."
+  dotnet tool install --global csharpier 2>/dev/null || true
+  [ -f /root/.dotnet/tools/csharpier ] && ln -sf /root/.dotnet/tools/csharpier /usr/local/bin/csharpier
+  _timer "csharpier" "$t"
+fi
+
 # ── PHP ──────────────────────────────────────────────────────────────────────
 if ! _installed php; then
   t=$(date +%s)
@@ -331,12 +358,12 @@ ENVEOF
     echo "PUPPETEER_EXECUTABLE_PATH=${PLAYWRIGHT_CHROMIUM}" >> /etc/environment
     echo "CHROME_BIN=${PLAYWRIGHT_CHROMIUM}" >> /etc/environment
   fi
-  echo 'PATH="/root/.cargo/bin:/root/.local/bin:/root/.deno/bin:/usr/local/go/bin:/root/go/bin:/root/.dotnet:${PATH}"' >> /etc/environment
+  echo 'PATH="/root/.cargo/bin:/root/.local/bin:/root/.deno/bin:/usr/local/go/bin:/root/go/bin:/root/.dotnet:/root/.dotnet/tools:${PATH}"' >> /etc/environment
 fi
 
 export GOPATH=/root/go
 export DOTNET_ROOT=/root/.dotnet
-export PATH="/root/.cargo/bin:/root/.local/bin:/root/.deno/bin:/usr/local/go/bin:/root/go/bin:/root/.dotnet:$PATH"
+export PATH="/root/.cargo/bin:/root/.local/bin:/root/.deno/bin:/usr/local/go/bin:/root/go/bin:/root/.dotnet:/root/.dotnet/tools:$PATH"
 
 
 # ── Summary ──────────────────────────────────────────────────────────────────
@@ -371,4 +398,5 @@ printf "%-10s %s\n" "gcloud:" "$(gcloud --version | head -1 2>/dev/null || echo 
 printf "%-10s %s\n" "terraform:" "$(terraform version | head -1 2>/dev/null || echo 'not found')"
 printf "%-10s %s\n" "kubectl:" "$(kubectl version --client=true --output=yaml 2>/dev/null | head -2 | tail -1 2>/dev/null || echo 'not found')"
 printf "%-10s %s\n" "helm:" "$(helm version --short 2>/dev/null || echo 'not found')"
+printf "%-10s %s\n" "liquibase:" "$(liquibase --version 2>&1 | head -1 2>/dev/null || echo 'not found')"
 echo "Chromium:  ${PLAYWRIGHT_CHROMIUM:-not found}"

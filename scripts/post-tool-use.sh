@@ -76,6 +76,14 @@ case "$FILE" in
       terraform fmt "$FILE" >/dev/null 2>&1 || true
     fi
     ;;
+  *.cs|*.csproj|*.fs|*.fsproj|*.vb|*.vbproj)
+    if command -v csharpier &>/dev/null; then
+      csharpier format "$FILE" >/dev/null 2>&1 \
+        || csharpier "$FILE" >/dev/null 2>&1 || true
+    elif command -v dotnet &>/dev/null; then
+      dotnet format whitespace --include "$FILE" --no-restore >/dev/null 2>&1 || true
+    fi
+    ;;
   *.js|*.jsx|*.ts|*.tsx|*.mjs|*.cjs|*.json|*.jsonc|*.md|*.mdx|*.css|*.scss|*.html|*.yaml|*.yml)
     if command -v prettier &>/dev/null; then
       prettier --write --log-level=silent "$FILE" >/dev/null 2>&1 || true
